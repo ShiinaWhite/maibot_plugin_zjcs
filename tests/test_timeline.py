@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from timeline import (
     build_reminders,
@@ -125,6 +125,8 @@ def test_secret_treasure_includes_confirmed_reward_for_known_phase() -> None:
     timeline = {
         "activity_rules": {
             "secret_treasure_battle": {
+                "first_server_day": 8,
+                "period_days": 7,
                 "known_phases": [
                     {
                         "phase": 11,
@@ -137,7 +139,7 @@ def test_secret_treasure_includes_confirmed_reward_for_known_phase() -> None:
                         },
                         "status": "confirmed",
                     }
-                ]
+                ],
             }
         }
     }
@@ -154,6 +156,94 @@ def test_secret_treasure_includes_confirmed_reward_for_known_phase() -> None:
     assert reminders[0].event_id == "secret_treasure_11"
     assert "重点奖励：\n自选4阶技能碎片 ×180" in message
     assert "当前服务器进度：开服第 76 天" in message
+
+
+def test_secret_treasure_phase_17_falls_back_to_confirmed_category_rule() -> None:
+    open_date = date(2026, 1, 1)
+    timeline = {
+        "activity_rules": {
+            "secret_treasure_battle": {
+                "first_server_day": 8,
+                "period_days": 7,
+                "known_phases": [],
+                "post_phase_16_rule": {
+                    "status": "rule_confirmed_reward_detail_dynamic",
+                    "pattern_categories": [
+                        "自选当期奇迹遗物箱",
+                        "自选特殊遗物箱Ⅰ",
+                        "自选当前转职阶技能碎片×180",
+                        "自选特殊遗物箱Ⅱ",
+                    ],
+                },
+            }
+        }
+    }
+
+    reminders = build_reminders(
+        timeline,
+        today=open_date + timedelta(days=117),
+        open_date=open_date,
+        remind_days_before=[2],
+    )
+
+    assert len(reminders) == 1
+    reminder = reminders[0]
+    assert reminder.event_id == "secret_treasure_17"
+    assert reminder.event_date == open_date + timedelta(days=119)
+    assert reminder.payload["featured_reward_category"] == "自选当期奇迹遗物箱"
+    message = format_reminder(reminder)
+    assert "重点奖励类别：\n自选当期奇迹遗物箱" in message
+    assert "重点奖励：\n" not in message
+
+    assert (
+        build_reminders(
+            timeline,
+            today=open_date + timedelta(days=118),
+            open_date=open_date,
+            remind_days_before=[2],
+        )
+        == []
+    )
+
+
+def test_secret_treasure_explicit_future_phase_reward_takes_priority() -> None:
+    open_date = date(2026, 1, 1)
+    timeline = {
+        "activity_rules": {
+            "secret_treasure_battle": {
+                "first_server_day": 8,
+                "period_days": 7,
+                "known_phases": [
+                    {
+                        "phase": 17,
+                        "server_day": 120,
+                        "name": "秘宝大作战·第17期",
+                        "featured_reward": {
+                            "name": "明确记录的第17期奖励",
+                            "status": "confirmed",
+                        },
+                        "status": "confirmed",
+                    }
+                ],
+                "post_phase_16_rule": {
+                    "status": "rule_confirmed_reward_detail_dynamic",
+                    "pattern_categories": ["不应使用的回退类别"],
+                },
+            }
+        }
+    }
+
+    reminders = build_reminders(
+        timeline,
+        today=open_date + timedelta(days=117),
+        open_date=open_date,
+        remind_days_before=[2],
+    )
+
+    assert len(reminders) == 1
+    message = format_reminder(reminders[0])
+    assert "重点奖励：\n明确记录的第17期奖励" in message
+    assert "不应使用的回退类别" not in message
 
 
 def test_weekly_side_activity_uses_target_server_day() -> None:
@@ -218,6 +308,29 @@ def test_later_season_anchor_takes_priority_over_observed_server_day() -> None:
         date(2026, 1, 1),
         {"S4": date(2026, 2, 1)},
     ) == date(2026, 2, 3)
+
+
+def test_later_season_requires_anchor_even_when_server_day_exists() -> None:
+    event = {
+        "id": "s4_without_anchor",
+        "season": "S4",
+        "season_day": 3,
+        "server_day": 3,
+        "name": "缺少锚点的 S4 事件",
+        "status": "confirmed",
+    }
+
+    assert calculate_event_date(event, date(2026, 1, 1), {}) is None
+    assert (
+        build_reminders(
+            {"events": [event]},
+            today=date(2026, 1, 1),
+            open_date=date(2026, 1, 1),
+            season_anchor_dates={},
+            remind_days_before=[2],
+        )
+        == []
+    )
 
 
 def test_notification_key_includes_event_date() -> None:

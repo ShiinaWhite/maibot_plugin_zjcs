@@ -66,7 +66,9 @@ def calculate_event_date(
         if isinstance(season, str) and _is_later_season(season)
         else None
     )
-    if season_day is not None and anchor_date is not None:
+    if season_day is not None and isinstance(season, str) and _is_later_season(season):
+        if anchor_date is None:
+            return None
         return anchor_date + timedelta(days=season_day - 1)
 
     server_day = _positive_int(item.get("server_day"))
@@ -90,7 +92,7 @@ def build_reminders(
     remind_days_before: Iterable[int] = (2, 1),
 ) -> list[Reminder]:
     anchors = season_anchor_dates or {}
-    reminder_days = _normalize_remind_days(remind_days_before)
+    reminder_days = validate_remind_days(remind_days_before)
     current_server_day = (
         calculate_server_day(today, open_date) if open_date is not None else None
     )
@@ -140,7 +142,6 @@ def build_reminders(
     reminders.extend(
         _build_secret_treasure_reminders(
             timeline,
-            today=today,
             open_date=open_date,
             remind_days=reminder_days,
             current_server_day=current_server_day,
@@ -201,6 +202,10 @@ def format_reminder(reminder: Reminder) -> str:
                 if amount is not None:
                     reward_text = f"{reward_text} ×{amount}"
                 lines.extend(["", "重点奖励：", reward_text])
+        else:
+            reward_category = reminder.payload.get("featured_reward_category")
+            if isinstance(reward_category, str) and reward_category:
+                lines.extend(["", "重点奖励类别：", reward_category])
     else:
         lines = [
             "【杖剑传说 · 事件提醒】",
@@ -239,11 +244,13 @@ def format_power(value: object) -> str:
 def _build_secret_treasure_reminders(
     timeline: Mapping[str, Any],
     *,
-    today: date,
     open_date: date | None,
     remind_days: tuple[int, ...],
     current_server_day: int | None,
 ) -> list[Reminder]:
+    if open_date is None or current_server_day is None:
+        return []
+
     activity_rules = timeline.get("activity_rules")
     if not isinstance(activity_rules, Mapping):
         return []
@@ -251,35 +258,76 @@ def _build_secret_treasure_reminders(
     if not isinstance(rule, Mapping):
         return []
 
+    first_server_day = _positive_int(rule.get("first_server_day"))
+    period_days = _positive_int(rule.get("period_days"))
+    if first_server_day is None or period_days is None:
+        return []
+
+    explicit_phases = {
+        phase_number: phase
+        for phase in _mapping_list(rule.get("known_phases"))
+        if (phase_number := _positive_int(phase.get("phase"))) is not None
+    }
+    fallback_categories = _secret_treasure_fallback_categories(rule)
+
     reminders: list[Reminder] = []
-    for phase in _mapping_list(rule.get("known_phases")):
-        phase_status = phase.get("status")
-        reward = phase.get("featured_reward")
-        if phase_status not in NOTIFIABLE_STATUSES or not isinstance(reward, Mapping):
-            continue
-        if reward.get("status") not in NOTIFIABLE_STATUSES:
-            continue
-        if not isinstance(reward.get("name"), str) or not reward["name"]:
+    for remind_days_before in remind_days:
+        target_server_day = current_server_day + remind_days_before
+        phase_offset = target_server_day - first_server_day
+        if phase_offset < 0 or phase_offset % period_days != 0:
             continue
 
-        phase_number = _positive_int(phase.get("phase"))
-        if phase_number is None:
+        phase_number = (phase_offset // period_days) + 1
+        phase = explicit_phases.get(phase_number)
+        name = f"秘宝大作战·第{phase_number}期"
+        payload: dict[str, Any] = {"phase": phase_number}
+
+        if phase is not None:
+            phase_status = phase.get("status")
+            reward = phase.get("featured_reward")
+            if phase_status not in NOTIFIABLE_STATUSES or not isinstance(
+                reward, Mapping
+            ):
+                continue
+            if reward.get("status") not in NOTIFIABLE_STATUSES:
+                continue
+            if not isinstance(reward.get("name"), str) or not reward["name"]:
+                continue
+            phase_name = phase.get("name")
+            if isinstance(phase_name, str) and phase_name:
+                name = phase_name
+            payload["featured_reward"] = dict(reward)
+        elif phase_number > 16 and fallback_categories:
+            payload["featured_reward_category"] = fallback_categories[
+                (phase_number - 1) % len(fallback_categories)
+            ]
+        else:
             continue
-        reminder = _build_reminder(
-            phase,
-            event_id=f"secret_treasure_{phase_number}",
-            category="activity",
-            date_label="开放日期",
-            today=today,
-            open_date=open_date,
-            season_anchor_dates={},
-            remind_days=remind_days,
-            current_server_day=current_server_day,
-            payload={"featured_reward": dict(reward), "phase": phase_number},
+
+        reminders.append(
+            Reminder(
+                event_id=f"secret_treasure_{phase_number}",
+                category="activity",
+                name=name,
+                event_date=open_date + timedelta(days=target_server_day - 1),
+                remind_days_before=remind_days_before,
+                date_label="开放日期",
+                payload=payload,
+                current_server_day=current_server_day,
+            )
         )
-        if reminder is not None:
-            reminders.append(reminder)
     return reminders
+
+
+def _secret_treasure_fallback_categories(
+    rule: Mapping[str, Any],
+) -> tuple[str, ...]:
+    post_phase_rule = rule.get("post_phase_16_rule")
+    if not isinstance(post_phase_rule, Mapping):
+        return ()
+    if post_phase_rule.get("status") != "rule_confirmed_reward_detail_dynamic":
+        return ()
+    return tuple(_string_list(post_phase_rule.get("pattern_categories")))
 
 
 def _build_weekly_activity_reminders(
@@ -383,12 +431,19 @@ def _confirmed_requirements(item: Mapping[str, Any]) -> dict[str, object]:
     }
 
 
-def _normalize_remind_days(values: Iterable[int]) -> tuple[int, ...]:
+def validate_remind_days(values: Iterable[int]) -> tuple[int, ...]:
     normalized: set[int] = set()
-    for value in values:
-        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            continue
+    try:
+        iterator = iter(values)
+    except TypeError as exc:
+        raise ValueError("remind_days_before 必须至少包含一个正整数") from exc
+
+    for value in iterator:
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError("remind_days_before 只能包含正整数")
         normalized.add(value)
+    if not normalized:
+        raise ValueError("remind_days_before 必须至少包含一个正整数")
     return tuple(sorted(normalized, reverse=True))
 
 

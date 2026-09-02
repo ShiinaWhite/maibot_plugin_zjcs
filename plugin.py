@@ -18,6 +18,7 @@ try:
         load_timeline,
         make_notification_key,
         parse_iso_date,
+        validate_remind_days,
     )
 except ImportError:
     from state import NotificationState, StateFileError
@@ -27,6 +28,7 @@ except ImportError:
         load_timeline,
         make_notification_key,
         parse_iso_date,
+        validate_remind_days,
     )
 
 
@@ -162,28 +164,37 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             if not config.plugin.enabled:
                 return
 
+            if not config.server.open_date.strip():
+                self._logger.error(
+                    "插件配置无效：server.open_date 不能为空；本轮通知已停止"
+                )
+                return
+            try:
+                open_date = parse_iso_date(config.server.open_date, "server.open_date")
+                remind_days = validate_remind_days(config.schedule.remind_days_before)
+                season_anchor_dates = {
+                    season: parse_iso_date(
+                        anchor, f"server.season_anchor_dates.{season}"
+                    )
+                    for season, anchor in config.server.season_anchor_dates.items()
+                    if anchor
+                }
+            except (TypeError, ValueError) as exc:
+                self._logger.error("插件配置无效：%s；本轮通知已停止", exc)
+                return
+
             group_id = config.target.group_id.strip()
             if not group_id:
                 self._logger.warning("插件已启用，但尚未配置 target.group_id")
                 return
 
-            open_date = (
-                parse_iso_date(config.server.open_date, "server.open_date")
-                if config.server.open_date
-                else None
-            )
-            season_anchor_dates = {
-                season: parse_iso_date(anchor, f"server.season_anchor_dates.{season}")
-                for season, anchor in config.server.season_anchor_dates.items()
-                if anchor
-            }
             timeline = load_timeline(TIMELINE_PATH)
             reminders = build_reminders(
                 timeline,
                 today=today,
                 open_date=open_date,
                 season_anchor_dates=season_anchor_dates,
-                remind_days_before=config.schedule.remind_days_before,
+                remind_days_before=remind_days,
             )
         except (OSError, TypeError, ValueError, RuntimeError) as exc:
             self._logger.error("每日时间线检查失败：%s", exc)

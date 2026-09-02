@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import date, datetime, time
 import json
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -114,6 +115,47 @@ async def test_failed_send_is_not_marked(tmp_path, monkeypatch) -> None:
 
     assert len(instance.ctx.send.calls) == 1
     assert not (tmp_path / "notification_state.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_missing_open_date_logs_config_error_and_skips_round(
+    tmp_path, monkeypatch, caplog
+) -> None:
+    write_timeline(tmp_path)
+    monkeypatch.setattr(plugin, "TIMELINE_PATH", tmp_path / "timeline.json")
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(tmp_path)
+    config = make_config()
+    config["server"]["open_date"] = ""
+    instance.set_plugin_config(config)
+
+    with caplog.at_level(logging.ERROR, logger=plugin.PLUGIN_ID):
+        await instance._run_daily_check(today=date(2026, 1, 1))
+
+    assert "server.open_date" in caplog.text
+    assert not instance.ctx.chat.calls
+    assert not instance.ctx.send.calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("remind_days", [[], [0], [-1], [2, 0]])
+async def test_invalid_remind_days_log_config_error_and_skip_round(
+    tmp_path, monkeypatch, caplog, remind_days
+) -> None:
+    write_timeline(tmp_path)
+    monkeypatch.setattr(plugin, "TIMELINE_PATH", tmp_path / "timeline.json")
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(tmp_path)
+    config = make_config()
+    config["schedule"]["remind_days_before"] = remind_days
+    instance.set_plugin_config(config)
+
+    with caplog.at_level(logging.ERROR, logger=plugin.PLUGIN_ID):
+        await instance._run_daily_check(today=date(2026, 1, 1))
+
+    assert "remind_days_before" in caplog.text
+    assert not instance.ctx.chat.calls
+    assert not instance.ctx.send.calls
 
 
 @pytest.mark.asyncio
