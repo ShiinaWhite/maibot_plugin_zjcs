@@ -12,7 +12,14 @@
     "README.md",
     "RESEARCH_SOURCES.md",
     "config.example.toml",
+    "_manifest.json",
+    "plugin.py",
+    "state.py",
+    "tests/test_plugin.py",
+    "tests/test_state.py",
+    "tests/test_timeline.py",
+    "timeline.py",
     "timeline_v1.json"
   ],
-  "purpose": "Project bootstrap, long-term rules, current task handoff, research references, and timeline data for the MaiBot Sword & Staff guild plugin."
+  "purpose": "Project source, long-term rules, current task handoff, research references, tests, and timeline data for the MaiBot Sword & Staff guild plugin."
 }

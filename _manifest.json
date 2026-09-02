@@ -1,0 +1,37 @@
+{
+  "manifest_version": 2,
+  "version": "0.1.0",
+  "name": "zjcs.guild-notifier",
+  "description": "《杖剑传说》公会副本、活动和重要事件提前通知插件。",
+  "author": {
+    "name": "zjcs guild notifier",
+    "url": "https://github.com/ShiinaWhite/maibot_plugin_zjcs"
+  },
+  "license": "UNLICENSED",
+  "urls": {
+    "repository": "https://github.com/ShiinaWhite/maibot_plugin_zjcs",
+    "homepage": "https://github.com/ShiinaWhite/maibot_plugin_zjcs",
+    "documentation": "https://github.com/ShiinaWhite/maibot_plugin_zjcs#readme",
+    "issues": "https://github.com/ShiinaWhite/maibot_plugin_zjcs/issues"
+  },
+  "host_application": {
+    "min_version": "1.0.0",
+    "max_version": "1.2.99"
+  },
+  "sdk": {
+    "min_version": "2.8.0",
+    "max_version": "2.99.99"
+  },
+  "capabilities": [
+    "send.text",
+    "chat.open_session"
+  ],
+  "i18n": {
+    "default_locale": "zh-CN",
+    "locales_path": "_locales",
+    "supported_locales": [
+      "zh-CN"
+    ]
+  },
+  "id": "zjcs.guild-notifier"
+}

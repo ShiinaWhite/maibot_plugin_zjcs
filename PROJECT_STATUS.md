@@ -4,9 +4,9 @@
 
 ## 当前阶段
 
-**规划与数据准备完成，正式施工尚未开始。**
+**V1 插件源码实现与本地单元验证完成，尚待部署到本地 MaiBot 做真实运行验证。**
 
-项目已经完成需求讨论、V1 范围确定、初步数据收集、MaiBot 参考实现筛选以及施工计划确认。
+项目已经完成需求讨论、V1 范围确定、初步数据收集、MaiBot 参考实现筛选、施工计划确认以及第一版源码实现。
 
 ## 当前服务器进度
 
@@ -28,6 +28,10 @@
 - `MAIBOT_REFERENCES.md`
 - `DESIGN_DECISIONS.md`
 - `config.example.toml`
+- `plugin.py`
+- `state.py`
+- `tests/`
+- `timeline.py`
 - `timeline_v1.json`
 
 ## 数据现状
@@ -40,11 +44,18 @@
 
 第一版不要求为了补齐 S6 而阻塞开发。
 
+## 当前 V1 实现资产
+
+插件源码、时间线数据、配置和测试位于当前 workspace；部署目录为：
+
+E:\AI Bot\MaiM-with-u\MaiBot\plugins\zjcs_guild_notifier
+
 ## 当前下一步
 
-按 `CURRENT_TASK_V1.md` 开始插件源码施工。完成第一轮可运行实现并通过本地验证后，
-创建语义清晰的 commit 并 push 到公开 GitHub，暂停等待外部 GPT 基于真实源码和
-commit diff 进行 Review。
+部署当前 workspace 中的插件文件到本地 MaiBot 的
+`plugins\zjcs_guild_notifier`，配置目标群和服务器开服日期后，进行真实 MaiBot
+运行、目标群解析和主动发送验证。第一轮代码 push 后暂停，等待外部 GPT
+基于 GitHub 中的真实源码和 commit diff 进行 Review。
 
 ## 本文件更新规则
 

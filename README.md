@@ -61,6 +61,23 @@
 `timeline_v1.json` 应随插件一起部署到本地 MaiBot 插件目录；运行时状态不会写入源码目录，
 而是由 MaiBot 的 `ctx.paths.data_dir` 提供位置。
 
+## V1 当前实现布局
+
+当前 workspace 作为插件源码和测试根目录，文件职责如下：
+
+- `_manifest.json`、`config.example.toml`：MaiBot 插件清单和公开配置模板；
+- `plugin.py`：MaiBot 生命周期、每日调度、目标群解析和固定文本发送；
+- `timeline.py`：时间线读取、服务器 Day / 赛季锚点日期计算、状态筛选和消息格式化；
+- `state.py`：使用 MaiBot 授予的插件数据目录保存跨重启去重状态；
+- `tests/`：时间线、状态持久化和 MaiBot 能力调用的单元测试。
+
+部署到本地 MaiBot 时，插件目录应为：
+
+E:\AI Bot\MaiM-with-u\MaiBot\plugins\zjcs_guild_notifier
+
+本 workspace 的 `timeline_v1.json` 应随插件一起部署；运行时状态不会写入源码目录，
+而是由 MaiBot 的 `ctx.paths.data_dir` 提供位置。
+
 ## 项目管理方式
 
 这个项目采用三层信息结构：
