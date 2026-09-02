@@ -1,0 +1,18 @@
+{
+  "package": "zjcs_maibot_project_bootstrap",
+  "generated_on": "2026-09-02",
+  "files": [
+    "AGENTS.md",
+    "CURRENT_TASK_V1.md",
+    "DATA_GUIDE.md",
+    "DESIGN_DECISIONS.md",
+    "MAIBOT_REFERENCES.md",
+    "PROJECT_BRIEF.md",
+    "PROJECT_STATUS.md",
+    "README.md",
+    "RESEARCH_SOURCES.md",
+    "config.example.toml",
+    "timeline_v1.json"
+  ],
+  "purpose": "Project bootstrap, long-term rules, current task handoff, research references, and timeline data for the MaiBot Sword & Staff guild plugin."
+}

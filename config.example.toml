@@ -1,0 +1,15 @@
+[plugin]
+enabled = false
+config_version = "1.0.0"
+
+[target]
+group_id = ""
+
+[server]
+open_date = ""
+season_anchor_dates = {}
+
+[schedule]
+daily_check_time = "09:00"
+timezone = "Asia/Shanghai"
+remind_days_before = [2, 1]

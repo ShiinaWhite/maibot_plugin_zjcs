@@ -1,0 +1,7 @@
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+config.toml
+notification_state.json
+*.py[cod]
+*.pyc

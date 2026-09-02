@@ -1,0 +1,1237 @@
+{
+  "schema_version": "1.0.0",
+  "dataset_name": "杖剑传说通知Bot V1 数据集",
+  "generated_on": "2026-09-02",
+  "scope": {
+    "v1_features": [
+      "按服务器/赛季进度提前 N 天通知副本开放",
+      "副本通知附带各难度准入战力",
+      "按服务器进度通知秘宝大作战及重点大奖",
+      "通知重要赛季事件、赛季地图、遗物池等"
+    ],
+    "not_in_v1": [
+      "副本攻略打法",
+      "装备掉落详解",
+      "技能推荐",
+      "LLM问答"
+    ]
+  },
+  "calculation_model": {
+    "early_seasons": "S1-S3 可优先使用 server_day；仍建议保留 override。",
+    "later_seasons": "S4+ 优先使用 season_anchor_date + season_day，避免合区/位面流通导致绝对开服天数偏移。",
+    "recommended_server_config": {
+      "server_name": "示例服务器",
+      "open_date": "YYYY-MM-DD",
+      "season_anchors": {
+        "S1": null,
+        "S2": null,
+        "S3": null,
+        "S4": null,
+        "S5": null,
+        "S6": null
+      },
+      "remind_days_before": [
+        2,
+        1
+      ],
+      "daily_check_time": "09:00",
+      "timezone": "Asia/Shanghai"
+    }
+  },
+  "dungeons": [
+    {
+      "id": "world_tree",
+      "season": "PRE",
+      "region": "森之国",
+      "name": "世界之树",
+      "server_day": 1,
+      "requirements": {
+        "普通": null,
+        "困难": 36000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s1_s2",
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "machine_god_mountain",
+      "season": "PRE",
+      "region": "山之国",
+      "name": "机神山",
+      "server_day": 4,
+      "requirements": {
+        "普通": null,
+        "困难": 180000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s1_s2",
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "sea_palace_ruins",
+      "season": "S1",
+      "region": "泽之国",
+      "name": "海之宫遗迹",
+      "server_day": 12,
+      "requirements": {
+        "普通": null,
+        "困难": 580000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s1_s2",
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "gensui_taisha",
+      "season": "S1",
+      "region": "泽之国",
+      "name": "源水大社",
+      "server_day": 24,
+      "requirements": {
+        "普通": 930000,
+        "困难": 1450000,
+        "噩梦": 2050000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s1_s2",
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "yomi_pavilion",
+      "season": "S1",
+      "region": "泽之国",
+      "name": "黄泉阁",
+      "server_day": 33,
+      "requirements": {
+        "普通": 2250000,
+        "困难": 2750000,
+        "噩梦": 3900000,
+        "炼狱": 6200000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s1_s2",
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "fengmo_gorge",
+      "season": "S2",
+      "region": "龙之国",
+      "name": "封魔峡",
+      "server_day": 47,
+      "requirements": {
+        "普通": null,
+        "困难": 2350000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s1_s2",
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "general_tomb",
+      "season": "S2",
+      "region": "龙之国",
+      "name": "将军陵",
+      "server_day": 60,
+      "requirements": {
+        "普通": 3550000,
+        "困难": 5000000,
+        "噩梦": 6000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s1_s2",
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "qingyun_temple",
+      "season": "S2",
+      "region": "龙之国",
+      "name": "青云观",
+      "server_day": 73,
+      "requirements": {
+        "普通": 6200000,
+        "困难": 7700000,
+        "噩梦": 9800000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s1_s2",
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "ancient_sword_city",
+      "season": "S2",
+      "region": "龙之国",
+      "name": "古剑城",
+      "server_day": 86,
+      "requirements": {
+        "普通": 10000000,
+        "困难": 12500000,
+        "噩梦": 15800000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s1_s2",
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "immortal_sea_ark",
+      "season": "S2",
+      "region": "龙之国",
+      "name": "仙海云舟",
+      "server_day": 99,
+      "requirements": {
+        "普通": 16500000,
+        "困难": 20000000,
+        "噩梦": 24500000,
+        "炼狱": 40000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "qenu_timeline"
+      ],
+      "notes": "战力门槛另有 TapTap 正式服攻略交叉验证；后续实现时可补对应 source URL。"
+    },
+    {
+      "id": "crystal_spiral_tree",
+      "season": "S3",
+      "region": "羽之国",
+      "name": "结晶螺旋树",
+      "server_day": 114,
+      "requirements": {
+        "普通": null,
+        "困难": 9000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s3",
+        "gamekee_timeline"
+      ]
+    },
+    {
+      "id": "eternal_flower_garden",
+      "season": "S3",
+      "region": "羽之国",
+      "name": "永恒花庭",
+      "server_day": 127,
+      "requirements": {
+        "普通": 12500000,
+        "困难": 15000000,
+        "噩梦": 18000000,
+        "炼狱": 28500000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s3",
+        "gamekee_timeline"
+      ]
+    },
+    {
+      "id": "war_abyss_fortress",
+      "season": "S3",
+      "region": "羽之国",
+      "name": "战渊堡垒",
+      "server_day": 141,
+      "requirements": {
+        "普通": 20000000,
+        "困难": 26000000,
+        "噩梦": 30000000,
+        "炼狱": 52000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s3",
+        "gamekee_timeline"
+      ]
+    },
+    {
+      "id": "purification_court",
+      "season": "S3",
+      "region": "羽之国",
+      "name": "净化之庭",
+      "server_day": 155,
+      "requirements": {
+        "普通": 32500000,
+        "困难": 43000000,
+        "噩梦": 50500000,
+        "炼狱": 86000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s3",
+        "gamekee_timeline"
+      ]
+    },
+    {
+      "id": "order_temple",
+      "season": "S3",
+      "region": "羽之国",
+      "name": "秩序神殿",
+      "server_day": 169,
+      "requirements": {
+        "普通": 55000000,
+        "困难": 65000000,
+        "噩梦": 82000000,
+        "炼狱": 115000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s3",
+        "gamekee_timeline"
+      ]
+    },
+    {
+      "id": "blazing_sun_spire",
+      "season": "S3",
+      "region": "羽之国",
+      "name": "烈阳尖塔",
+      "server_day": 183,
+      "requirements": {
+        "普通": 84500000,
+        "困难": 100000000,
+        "噩梦": 120000000,
+        "炼狱": 180000000
+      },
+      "status": "confirmed_with_version_risk",
+      "sources": [
+        "taptap_s3",
+        "gamekee_timeline"
+      ],
+      "notes": "该副本历史上先遣服/正式服多次调门槛；这里采用 TapTap S3 图鉴页面当前值。"
+    },
+    {
+      "id": "sovereign_nest",
+      "season": "S3",
+      "region": "羽之国",
+      "name": "君临之巢",
+      "server_day": 197,
+      "requirements": {
+        "普通": 130000000,
+        "困难": 150000000,
+        "噩梦": 190000000,
+        "炼狱": 310000000
+      },
+      "status": "confirmed_with_version_risk",
+      "sources": [
+        "gamekee_timeline"
+      ],
+      "notes": "战力值来自后期公开攻略口径；历史上存在 1.25/1.45/1.8/3.0 亿等旧版本数字，插件应允许数据热更新。"
+    },
+    {
+      "id": "clockwork_tower",
+      "season": "S4",
+      "region": "哈帕迪",
+      "name": "奇巧钟楼",
+      "season_day": 1,
+      "observed_first_server_day": 229,
+      "requirements": {
+        "普通": null,
+        "困难": 27000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s4"
+      ],
+      "notes": "S4 开始不同服务器绝对开服天数可能有偏移；优先按 season_day + season_anchor 计算。"
+    },
+    {
+      "id": "paradise_pirate_ship",
+      "season": "S4",
+      "region": "哈帕迪",
+      "name": "乐园海盗船",
+      "season_day": 14,
+      "requirements": {
+        "普通": 35000000,
+        "困难": 48000000,
+        "噩梦": 57000000,
+        "炼狱": 84000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s4"
+      ]
+    },
+    {
+      "id": "sea_emperor_submarine",
+      "season": "S4",
+      "region": "哈帕迪",
+      "name": "海皇潜艇",
+      "season_day": 28,
+      "requirements": {
+        "普通": 62000000,
+        "困难": 72000000,
+        "噩梦": 87000000,
+        "炼狱": 130000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s4"
+      ],
+      "notes": "采用近期 TapTap S4 图鉴当前值；历史先遣服噩梦曾出现 8300 万，正式图鉴当前为 8700 万。"
+    },
+    {
+      "id": "clockwork_fortress",
+      "season": "S4",
+      "region": "哈帕迪",
+      "name": "发条要塞",
+      "season_day": 42,
+      "requirements": {
+        "普通": 91000000,
+        "困难": 110000000,
+        "噩梦": 130000000,
+        "炼狱": 190000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s4"
+      ]
+    },
+    {
+      "id": "astronomical_observatory",
+      "season": "S4",
+      "region": "哈帕迪",
+      "name": "天象观测站",
+      "season_day": 56,
+      "requirements": {
+        "普通": 145000000,
+        "困难": 175000000,
+        "噩梦": 210000000,
+        "炼狱": 305000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s4"
+      ]
+    },
+    {
+      "id": "titan_balloon",
+      "season": "S4",
+      "region": "哈帕迪",
+      "name": "泰坦热气球",
+      "season_day": 70,
+      "requirements": {
+        "普通": 220000000,
+        "困难": 256000000,
+        "噩梦": 300000000,
+        "炼狱": 460000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s4"
+      ]
+    },
+    {
+      "id": "starry_city",
+      "season": "S4",
+      "region": "哈帕迪",
+      "name": "星空之城",
+      "season_day": 84,
+      "requirements": {
+        "普通": 315000000,
+        "困难": 365000000,
+        "噩梦": 435000000,
+        "炼狱": 630000000
+      },
+      "status": "confirmed_with_version_risk",
+      "sources": [
+        "taptap_s4",
+        "s4_adjustment"
+      ],
+      "notes": "星空之城曾在测试/先遣阶段多次调数；当前采用后续调整口径：普通3.15亿、困难3.65亿、噩梦4.35亿、炼狱6.3亿。"
+    },
+    {
+      "id": "ice_spire",
+      "season": "S5",
+      "region": "伊格尼斯",
+      "name": "冰棱尖塔",
+      "season_day": 1,
+      "observed_first_server_day": 344,
+      "requirements": {
+        "普通": null,
+        "困难": 82000000
+      },
+      "status": "confirmed_partial",
+      "sources": [
+        "taptap_s5"
+      ],
+      "notes": "S5 首本普通无战力值展示；困难 8200 万。"
+    },
+    {
+      "id": "blackrock_ruins",
+      "season": "S5",
+      "region": "伊格尼斯",
+      "name": "黑岩遗迹",
+      "season_day": 14,
+      "requirements": {
+        "普通": 110000000,
+        "困难": 130000000,
+        "噩梦": 156000000,
+        "炼狱": 230000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s5"
+      ]
+    },
+    {
+      "id": "eternal_frost_sanctum",
+      "season": "S5",
+      "region": "伊格尼斯",
+      "name": "永霜圣堂",
+      "season_day": 28,
+      "requirements": {
+        "普通": 166000000,
+        "困难": 192000000,
+        "噩梦": 230000000,
+        "炼狱": 350000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s5"
+      ]
+    },
+    {
+      "id": "infernal_throne",
+      "season": "S5",
+      "region": "伊格尼斯",
+      "name": "炎狱王座",
+      "season_day": 42,
+      "requirements": {
+        "普通": 240000000,
+        "困难": 280000000,
+        "噩梦": 340000000,
+        "炼狱": 500000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s5"
+      ]
+    },
+    {
+      "id": "moon_palace",
+      "season": "S5",
+      "region": "伊格尼斯",
+      "name": "月之宫殿",
+      "season_day": 56,
+      "requirements": {
+        "普通": 358000000,
+        "困难": 415000000,
+        "噩梦": 500000000,
+        "炼狱": 750000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s5"
+      ]
+    },
+    {
+      "id": "crimson_flame_wedge",
+      "season": "S5",
+      "region": "伊格尼斯",
+      "name": "赤炎之楔",
+      "season_day": 70,
+      "requirements": {
+        "普通": 514000000,
+        "困难": 588000000,
+        "噩梦": 720000000,
+        "炼狱": 1080000000
+      },
+      "status": "confirmed",
+      "sources": [
+        "taptap_s5"
+      ]
+    },
+    {
+      "id": "origin_gate",
+      "season": "S5",
+      "region": "伊格尼斯",
+      "name": "起源之门",
+      "season_day": 84,
+      "requirements": {
+        "普通": 680000000,
+        "困难": 780000000,
+        "噩梦": 950000000,
+        "炼狱": 1360000000,
+        "深渊": 1800000000
+      },
+      "deep_abyss_season_day": 91,
+      "status": "confirmed",
+      "sources": [
+        "taptap_s5"
+      ]
+    },
+    {
+      "id": "hurricane_pillar",
+      "season": "S6",
+      "region": "艾珀希",
+      "name": "飓风之柱",
+      "season_day": 1,
+      "requirements": {
+        "困难": 220000000
+      },
+      "status": "confirmed_partial",
+      "sources": [
+        "s6_launch"
+      ],
+      "notes": "S6正式服已开启；当前可可靠确认困难门槛约2.2亿，其余难度继续等待可靠正式服资料。"
+    },
+    {
+      "id": "tide_temple",
+      "season": "S6",
+      "region": "艾珀希",
+      "name": "潮汐灵殿",
+      "season_day": 14,
+      "requirements": {},
+      "status": "pending_formal_power",
+      "sources": []
+    },
+    {
+      "id": "crystal_furnace_city",
+      "season": "S6",
+      "region": "艾珀希",
+      "name": "焚晶熔城",
+      "season_day": 28,
+      "requirements": {},
+      "status": "pending_formal_power",
+      "sources": []
+    },
+    {
+      "id": "rock_battle_array",
+      "season": "S6",
+      "region": "艾珀希",
+      "name": "磐岩斗阵",
+      "season_day": 42,
+      "requirements": {},
+      "status": "pending_formal_power",
+      "sources": []
+    },
+    {
+      "id": "radiant_sanctuary",
+      "season": "S6",
+      "region": "艾珀希",
+      "name": "耀光圣庭",
+      "season_day": 56,
+      "requirements": {},
+      "status": "pending_formal_power",
+      "sources": []
+    },
+    {
+      "id": "corrosion_abyss",
+      "season": "S6",
+      "region": "艾珀希",
+      "name": "幽蚀深渊",
+      "season_day": 70,
+      "requirements": {},
+      "status": "pending_formal_power",
+      "sources": []
+    },
+    {
+      "id": "skyfall_fortress",
+      "season": "S6",
+      "region": "艾珀希",
+      "name": "天陨要塞",
+      "season_day": 84,
+      "requirements": {},
+      "status": "pending_formal_power",
+      "sources": []
+    }
+  ],
+  "events": [
+    {
+      "id": "season_s1_start",
+      "type": "season",
+      "season": "S1",
+      "server_day": 12,
+      "name": "S1 泽之国开启",
+      "status": "confirmed",
+      "sources": [
+        "gamekee_timeline",
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "whale_back_island",
+      "type": "season_map",
+      "season": "S1",
+      "server_day": 26,
+      "name": "鲸背岛",
+      "status": "confirmed",
+      "sources": [
+        "gamekee_timeline",
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "season_s2_start",
+      "type": "season",
+      "season": "S2",
+      "server_day": 47,
+      "name": "S2 龙之国开启",
+      "status": "confirmed",
+      "sources": [
+        "gamekee_timeline",
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "tongtian_tower",
+      "type": "season_map",
+      "season": "S2",
+      "server_day": 71,
+      "name": "通天塔",
+      "status": "confirmed",
+      "sources": [
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "dragon_relic_2",
+      "type": "relic_pool",
+      "season": "S2",
+      "server_day": 78,
+      "name": "龙国第二期遗物：道衍天机",
+      "status": "confirmed",
+      "sources": [
+        "gamekee_timeline",
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "bamboo_immortal",
+      "type": "phantom_beast",
+      "season": "S2",
+      "server_day": 92,
+      "name": "新幻兽：竹林仙君",
+      "status": "confirmed",
+      "sources": [
+        "gamekee_timeline"
+      ]
+    },
+    {
+      "id": "season_s3_start",
+      "type": "season",
+      "season": "S3",
+      "server_day": 114,
+      "name": "S3 羽之国开启",
+      "status": "confirmed",
+      "sources": [
+        "gamekee_timeline"
+      ]
+    },
+    {
+      "id": "star_sea_cruise",
+      "type": "season_map",
+      "season": "S3",
+      "server_day": 128,
+      "name": "星海巡游",
+      "status": "confirmed",
+      "sources": [
+        "gamekee_timeline"
+      ]
+    },
+    {
+      "id": "feather_relic_2",
+      "type": "relic_pool",
+      "season": "S3",
+      "server_day": 144,
+      "name": "羽国第二期遗物",
+      "status": "confirmed",
+      "sources": [
+        "gamekee_timeline"
+      ]
+    },
+    {
+      "id": "rainbow_star_spirit",
+      "type": "phantom_beast",
+      "season": "S3",
+      "server_day": 159,
+      "name": "虹彩星灵",
+      "status": "confirmed",
+      "sources": [
+        "gamekee_timeline"
+      ]
+    },
+    {
+      "id": "feather_relic_3",
+      "type": "relic_pool",
+      "season": "S3",
+      "server_day": 174,
+      "name": "羽国第三期遗物",
+      "status": "confirmed",
+      "sources": [
+        "gamekee_timeline"
+      ]
+    },
+    {
+      "id": "season_s4_start",
+      "type": "season",
+      "season": "S4",
+      "season_day": 1,
+      "name": "S4 哈帕迪开启",
+      "status": "confirmed",
+      "sources": [
+        "taptap_s4"
+      ],
+      "notes": "按赛季锚点计算，不硬编码所有服务器绝对开服 Day。"
+    },
+    {
+      "id": "absurd_paradise",
+      "type": "season_map",
+      "season": "S4",
+      "season_day": 15,
+      "name": "荒诞乐园",
+      "status": "confirmed",
+      "sources": [
+        "gamekee_timeline"
+      ]
+    },
+    {
+      "id": "hapadi_relic_2",
+      "type": "relic_pool",
+      "season": "S4",
+      "season_day": 31,
+      "name": "哈帕迪第二期遗物：荒诞喜剧",
+      "status": "confirmed",
+      "sources": [
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "season_s5_start",
+      "type": "season",
+      "season": "S5",
+      "season_day": 1,
+      "name": "S5 伊格尼斯开启",
+      "status": "confirmed",
+      "sources": [
+        "taptap_s5"
+      ]
+    },
+    {
+      "id": "frost_flame_gate",
+      "type": "season_map",
+      "season": "S5",
+      "season_day": 15,
+      "name": "霜焰之门",
+      "status": "confirmed",
+      "sources": [
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "ignis_relic_2",
+      "type": "relic_pool",
+      "season": "S5",
+      "season_day": 31,
+      "name": "伊格尼斯第二期遗物：冰火幻歌",
+      "status": "confirmed",
+      "sources": [
+        "qenu_timeline"
+      ]
+    },
+    {
+      "id": "season_s6_start",
+      "type": "season",
+      "season": "S6",
+      "season_day": 1,
+      "name": "S6 艾珀希开启",
+      "status": "confirmed",
+      "sources": [],
+      "notes": "2026-08-30 首批区服进入 S6；具体服务器使用自己的赛季锚点。"
+    }
+  ],
+  "activity_rules": {
+    "secret_treasure_battle": {
+      "name": "秘宝大作战",
+      "first_server_day": 8,
+      "period_days": 7,
+      "phase_formula": "phase = floor((server_day - 8) / 7) + 1",
+      "known_phases": [
+        {
+          "phase": 1,
+          "server_day": 8,
+          "name": "秘宝大作战·第1期",
+          "featured_reward": {
+            "name": "自选奇迹遗物箱·山",
+            "category": "relic_selector",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle"
+          ]
+        },
+        {
+          "phase": 2,
+          "server_day": 15,
+          "name": "秘宝大作战·第2期",
+          "featured_reward": {
+            "name": "幸运神像",
+            "category": "special_relic",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle"
+          ]
+        },
+        {
+          "phase": 3,
+          "server_day": 22,
+          "name": "秘宝大作战·第3期",
+          "featured_reward": {
+            "name": "自选3阶技能碎片",
+            "amount": 180,
+            "category": "skill_fragments",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle"
+          ]
+        },
+        {
+          "phase": 4,
+          "server_day": 29,
+          "name": "秘宝大作战·第4期",
+          "featured_reward": {
+            "name": "原初宝石",
+            "category": "special_relic",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle"
+          ]
+        },
+        {
+          "phase": 5,
+          "server_day": 36,
+          "name": "秘宝大作战·第5期",
+          "featured_reward": {
+            "name": "自选奇迹遗物箱·泽",
+            "category": "relic_selector",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle"
+          ]
+        },
+        {
+          "phase": 6,
+          "server_day": 43,
+          "name": "秘宝大作战·第6期",
+          "featured_reward": {
+            "name": "幸运神像",
+            "category": "special_relic",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle"
+          ]
+        },
+        {
+          "phase": 7,
+          "server_day": 50,
+          "name": "秘宝大作战·第7期",
+          "featured_reward": {
+            "name": "自选4阶技能碎片",
+            "amount": 180,
+            "category": "skill_fragments",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle"
+          ]
+        },
+        {
+          "phase": 8,
+          "server_day": 57,
+          "name": "秘宝大作战·第8期",
+          "featured_reward": {
+            "name": "原初宝石",
+            "category": "special_relic",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle"
+          ]
+        },
+        {
+          "phase": 9,
+          "server_day": 64,
+          "name": "秘宝大作战·第9期",
+          "featured_reward": {
+            "name": "自选奇迹遗物箱·龙Ⅰ（乾坤造化）",
+            "category": "relic_selector",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle"
+          ]
+        },
+        {
+          "phase": 10,
+          "server_day": 71,
+          "name": "秘宝大作战·第10期",
+          "featured_reward": {
+            "name": "幸运神像",
+            "category": "special_relic",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle"
+          ]
+        },
+        {
+          "phase": 11,
+          "server_day": 78,
+          "name": "秘宝大作战·第11期",
+          "featured_reward": {
+            "name": "自选4阶技能碎片",
+            "amount": 180,
+            "category": "skill_fragments",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle"
+          ]
+        },
+        {
+          "phase": 12,
+          "server_day": 85,
+          "name": "秘宝大作战·第12期",
+          "featured_reward": {
+            "name": "原初宝石",
+            "category": "special_relic",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle"
+          ]
+        },
+        {
+          "phase": 13,
+          "server_day": 92,
+          "name": "秘宝大作战·第13期",
+          "featured_reward": {
+            "name": "自选奇迹遗物箱·龙Ⅱ（道衍天机）",
+            "category": "relic_selector",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle",
+            "treasure_13"
+          ]
+        },
+        {
+          "phase": 14,
+          "server_day": 99,
+          "name": "秘宝大作战·第14期",
+          "featured_reward": {
+            "name": "幸运神像",
+            "category": "special_relic",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle",
+            "treasure_14"
+          ]
+        },
+        {
+          "phase": 15,
+          "server_day": 106,
+          "name": "秘宝大作战·第15期",
+          "featured_reward": {
+            "name": "自选4阶技能碎片",
+            "amount": 180,
+            "category": "skill_fragments",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle"
+          ]
+        },
+        {
+          "phase": 16,
+          "server_day": 113,
+          "name": "秘宝大作战·第16期",
+          "featured_reward": {
+            "name": "原初宝石",
+            "category": "special_relic",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "treasure_1_12",
+            "treasure_cycle"
+          ]
+        }
+      ],
+      "post_phase_16_rule": {
+        "status": "rule_confirmed_reward_detail_dynamic",
+        "pattern_categories": [
+          "自选当期奇迹遗物箱",
+          "自选特殊遗物箱Ⅰ（幸运神像/黄金圣木/后续新增同类）",
+          "自选当前转职阶技能碎片×180",
+          "自选特殊遗物箱Ⅱ（原初宝石/贤者之石/后续新增同类）"
+        ],
+        "notes": "第17期后特殊遗物箱内容会扩充，不能仅按最初四个单品写死；通知展示应优先读取显式 phase 数据，缺失时再回退到规则。"
+      },
+      "sources": [
+        "treasure_cycle",
+        "treasure_1_21_preview"
+      ]
+    },
+    "weekly_side_activity_rotation": {
+      "first_server_day": 15,
+      "period_days": 7,
+      "rotation": [
+        "宾果抽抽乐",
+        "幸运刮刮乐",
+        "菲涅克的谜题"
+      ],
+      "notes": "从第15天开始，每7天一项，三种活动按上述顺序循环；期数各自独立递增。",
+      "sources": [
+        "qenu_timeline"
+      ]
+    }
+  },
+  "sources": {
+    "qenu_timeline": {
+      "name": "杖劍時間軸 v1.5.2",
+      "url": "https://qenu.github.io/ethna-timeline/",
+      "kind": "community_timeline",
+      "notes": "公开时间线工具；适合提供开服天数、活动周期、赛季事件和部分副本门槛。存在不同区服/合区造成的赛季偏移，不能把后期绝对 Day 当作所有国服服务器的唯一真值。"
+    },
+    "gamekee_timeline": {
+      "name": "GameKee 杖剑传说玩法解锁时间线",
+      "url": "https://www.gamekee.com/zjcs/687197.html",
+      "kind": "community_wiki",
+      "notes": "用于交叉验证 S1-S4 的开服天数、赛季地图、遗物期等。"
+    },
+    "taptap_s1_s2": {
+      "name": "李沐泽：S1-S2日常区域副本怪物及掉落图鉴",
+      "url": "https://www.taptap.cn/moment/701578636490182289",
+      "kind": "taptap_guide",
+      "notes": "优先用于 S1-S2 正式服副本准入战力。"
+    },
+    "taptap_s3": {
+      "name": "李沐泽：S3日常区域副本怪物及掉落图鉴",
+      "url": "https://www.taptap.cn/moment/718972860940419196",
+      "kind": "taptap_guide",
+      "notes": "优先用于 S3 副本准入战力。"
+    },
+    "taptap_s4": {
+      "name": "李沐泽：S4日常区域副本怪物及掉落图鉴",
+      "url": "https://www.taptap.cn/moment/761801474576482900",
+      "kind": "taptap_guide",
+      "notes": "优先用于 S4 正式服/首日服副本准入战力与赛季内天数。"
+    },
+    "taptap_s5": {
+      "name": "李沐泽：S5日常区域副本怪物及掉落图鉴",
+      "url": "https://www.taptap.cn/moment/806004089350524248",
+      "kind": "taptap_guide",
+      "notes": "截至 2026-08-22 的 S5 副本图鉴；优先用于 S5 正式服副本准入战力与赛季内天数。"
+    },
+    "treasure_1_12": {
+      "name": "秘宝大作战前12期大奖整理",
+      "url": "https://jisu.tw/%E6%9D%96%E5%8A%8D%E5%82%B3%E8%AA%AA-%E5%9D%8E%E6%96%AF%E6%B1%80%E4%B9%8B%E7%B4%84-%E7%A7%98%E5%AF%B6%E5%A4%A7%E4%BD%9C%E6%88%B0%E5%85%8C%E6%8F%9B%E4%B8%80%E8%A6%BD/",
+      "kind": "guide_summary",
+      "notes": "前12期第五层大奖文字表，可与 TapTap 官方/攻略交叉验证。"
+    },
+    "treasure_cycle": {
+      "name": "TapTap：秘宝大作战个人循环兑换方案推荐",
+      "url": "https://www.taptap.cn/moment/700256868844438774",
+      "kind": "taptap_guide",
+      "notes": "确认开服第8天开始、每7天一期；前16期核心四类大奖循环。"
+    },
+    "treasure_13": {
+      "name": "官方 TapTap：第13期秘宝情报",
+      "url": "https://www.taptap.cn/moment/709474659275375794",
+      "kind": "official_taptap",
+      "notes": "确认第13期压轴奖励为自选奇迹遗物箱·龙II。"
+    },
+    "treasure_14": {
+      "name": "官方 TapTap：第14期秘宝情报",
+      "url": "https://www.taptap.cn/moment/712056828908801829",
+      "kind": "official_taptap",
+      "notes": "确认第14期压轴奖励为幸运神像。"
+    },
+    "treasure_1_21_preview": {
+      "name": "TapTap：秘宝大作战奖励预览（更新第21期）",
+      "url": "https://www.taptap.cn/moment/679707175039272542",
+      "kind": "preview",
+      "notes": "包含1-21期预览图片，但页面文字未完整展开每期奖品；先遣服数据只能作为补充，不能覆盖正式服已确认信息。"
+    },
+    "s4_adjustment": {
+      "name": "TapTap：先遣服紧急调整（星空之城/泰坦热气球）",
+      "url": "https://www.taptap.cn/moment/784365608320896260",
+      "kind": "taptap_update",
+      "notes": "用于确认星空之城后续调整后的噩梦4.35亿、炼狱6.3亿。"
+    },
+    "s6_launch": {
+      "name": "TapTap：S6闪耀羁绊上线",
+      "url": "https://www.taptap.cn/moment/843102224413363274",
+      "kind": "taptap_recent",
+      "notes": "用于确认S6已正式开启及飓风之柱困难约2.2亿；帖子注明部分内容源自先遣服，因此只采纳可交叉支持的字段。"
+    }
+  },
+  "data_policy": {
+    "priority": [
+      "正式服游戏内实测/官方公告",
+      "近期 TapTap 正式服图鉴/攻略",
+      "多个独立来源交叉一致",
+      "社区时间线",
+      "先遣服/测试服/预测"
+    ],
+    "statuses": {
+      "confirmed": "可直接用于通知",
+      "confirmed_partial": "已确认部分字段；缺失字段不要猜",
+      "confirmed_with_version_risk": "公开来源明确，但历史上有频繁调数；应支持热更新",
+      "pending_formal_power": "只确认事件/副本存在，正式服战力未可靠确认"
+    },
+    "rule": "任何 pending/测试服字段都不能以确定口吻推送给用户。"
+  }
+}
