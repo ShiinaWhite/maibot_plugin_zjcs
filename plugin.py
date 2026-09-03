@@ -34,6 +34,7 @@ except ImportError:
 
 PLUGIN_ID = "zjcs.guild-notifier"
 TIMELINE_PATH = Path(__file__).with_name("timeline_v1.json")
+SEND_RETRY_DELAYS_SECONDS = (1.0, 3.0, 5.0)
 
 
 class PluginSectionConfig(PluginConfigBase):
@@ -236,18 +237,7 @@ class ZjcsGuildNotifier(MaiBotPlugin):
                 reminder.event_date,
                 reminder.remind_days_before,
             )
-            try:
-                result = await self.ctx.send.text(
-                    message,
-                    stream_id,
-                    return_details=True,
-                )
-            except Exception as exc:
-                self._logger.error("通知发送失败，未记录为已完成：%s", exc)
-                continue
-
-            if not _send_succeeded(result):
-                self._logger.warning("通知发送未确认成功，未记录为已完成")
+            if not await self._send_reminder_with_retry(message, stream_id):
                 continue
 
             try:
@@ -259,7 +249,59 @@ class ZjcsGuildNotifier(MaiBotPlugin):
                 )
                 return
 
+    async def _send_reminder_with_retry(self, message: str, stream_id: str) -> bool:
+        """在单条提醒内有限重试，直到成功或耗尽短时重试次数。"""
+
+        total_attempts = len(SEND_RETRY_DELAYS_SECONDS) + 1
+        for attempt in range(total_attempts):
+            if attempt:
+                await asyncio.sleep(SEND_RETRY_DELAYS_SECONDS[attempt - 1])
+
+            try:
+                result = await self.ctx.send.text(
+                    message,
+                    stream_id,
+                    return_details=True,
+                )
+            except Exception as exc:
+                if attempt + 1 < total_attempts:
+                    self._logger.warning(
+                        "通知第 %d 次发送失败，将在 %.1f 秒后重试：%s",
+                        attempt + 1,
+                        SEND_RETRY_DELAYS_SECONDS[attempt],
+                        exc,
+                    )
+                else:
+                    self._logger.error(
+                        "通知发送失败，已耗尽 %d 次尝试，未记录为已完成：%s",
+                        total_attempts,
+                        exc,
+                    )
+                continue
+
+            if _send_succeeded(result):
+                return True
+
+            if attempt + 1 < total_attempts:
+                self._logger.warning(
+                    "通知第 %d 次发送未确认成功，将在 %.1f 秒后重试",
+                    attempt + 1,
+                    SEND_RETRY_DELAYS_SECONDS[attempt],
+                )
+            else:
+                self._logger.warning(
+                    "通知发送未确认成功，已耗尽 %d 次尝试，未记录为已完成",
+                    total_attempts,
+                )
+
+        return False
+
     async def _resolve_group_stream(self, group_id: str) -> str:
+        streams_result = await self.ctx.chat.get_group_streams(platform="qq")
+        streams = _extract_group_streams(streams_result)
+        if stream_id := _select_group_stream_id(streams, group_id):
+            return stream_id
+
         result = await self.ctx.chat.open_session(
             platform="qq",
             chat_type="group",
@@ -319,6 +361,72 @@ def _send_succeeded(result: object) -> bool:
     if result is True:
         return True
     return isinstance(result, Mapping) and result.get("sent") is True
+
+
+def _extract_group_streams(result: object) -> list[Mapping[str, object]]:
+    """读取 chat.get_group_streams 的当前 SDK 返回值。"""
+
+    if isinstance(result, Mapping):
+        if result.get("success") is False:
+            raise RuntimeError(
+                f"chat.get_group_streams 执行失败：{result.get('error', '未知错误')}"
+            )
+        raw_streams = result.get("streams")
+    else:
+        raw_streams = result
+
+    if not isinstance(raw_streams, list):
+        raise RuntimeError("chat.get_group_streams 未返回 streams 列表")
+    return [stream for stream in raw_streams if isinstance(stream, Mapping)]
+
+
+def _select_group_stream_id(
+    streams: list[Mapping[str, object]], group_id: str
+) -> str | None:
+    """按路由元数据优先级选择目标群已有 stream。"""
+
+    normalized_group_id = group_id.strip()
+    candidates: list[tuple[int, str]] = []
+    for stream in streams:
+        if str(stream.get("group_id") or "").strip() != normalized_group_id:
+            continue
+
+        stream_id = _first_nonempty_stream_value(stream, "stream_id", "session_id")
+        if stream_id is None:
+            continue
+
+        account_id = _stream_metadata_value(stream, "account_id")
+        scope = _stream_metadata_value(stream, "scope")
+        if account_id and scope:
+            priority = 3
+        elif account_id:
+            priority = 2
+        elif scope:
+            priority = 1
+        else:
+            priority = 0
+        candidates.append((priority, stream_id))
+
+    if not candidates:
+        return None
+
+    # 同一优先级不使用 SDK 返回顺序或非路由字段猜测，采用稳定的 stream_id tie-break。
+    candidates.sort(key=lambda candidate: (-candidate[0], candidate[1]))
+    return candidates[0][1]
+
+
+def _first_nonempty_stream_value(
+    stream: Mapping[str, object], *keys: str
+) -> str | None:
+    for key in keys:
+        value = str(stream.get(key) or "").strip()
+        if value:
+            return value
+    return None
+
+
+def _stream_metadata_value(stream: Mapping[str, object], key: str) -> str:
+    return str(stream.get(key) or "").strip()
 
 
 def create_plugin() -> ZjcsGuildNotifier:

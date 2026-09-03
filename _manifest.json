@@ -24,6 +24,7 @@
   },
   "capabilities": [
     "send.text",
+    "chat.get_group_streams",
     "chat.open_session"
   ],
   "i18n": {

@@ -13,9 +13,15 @@ from plugin import ZjcsGuildNotifier, _choose_due_check_date
 
 
 class FakeChat:
-    def __init__(self, result: object) -> None:
+    def __init__(self, result: object, group_streams: object = None) -> None:
         self.result = result
+        self.group_streams_result = [] if group_streams is None else group_streams
         self.calls: list[dict[str, str]] = []
+        self.group_stream_calls: list[dict[str, str]] = []
+
+    async def get_group_streams(self, **kwargs: str) -> object:
+        self.group_stream_calls.append(kwargs)
+        return self.group_streams_result
 
     async def open_session(self, **kwargs: str) -> object:
         self.calls.append(kwargs)
@@ -24,20 +30,33 @@ class FakeChat:
 
 class FakeSend:
     def __init__(self, result: object) -> None:
-        self.result = result
+        self.results = result if isinstance(result, list) else [result]
+        self.result_index = 0
         self.calls: list[tuple[str, str, bool]] = []
 
     async def text(
         self, message: str, stream_id: str, return_details: bool = False
     ) -> object:
         self.calls.append((message, stream_id, return_details))
-        return self.result
+        result = self.results[min(self.result_index, len(self.results) - 1)]
+        self.result_index += 1
+        if isinstance(result, BaseException):
+            raise result
+        return result
 
 
-def make_context(tmp_path, *, send_result: object = {"sent": True}) -> SimpleNamespace:
+def make_context(
+    tmp_path,
+    *,
+    send_result: object = {"sent": True},
+    group_streams: object = None,
+) -> SimpleNamespace:
     return SimpleNamespace(
         paths=SimpleNamespace(data_dir=tmp_path),
-        chat=FakeChat({"success": True, "stream": {"stream_id": "stream-123"}}),
+        chat=FakeChat(
+            {"success": True, "stream": {"stream_id": "stream-123"}},
+            group_streams=group_streams,
+        ),
         send=FakeSend(send_result),
     )
 
@@ -68,6 +87,35 @@ def write_timeline(tmp_path) -> None:
                         "requirements": {"普通": 10_000},
                         "status": "confirmed",
                     }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def write_two_reminder_timeline(tmp_path) -> None:
+    (tmp_path / "timeline.json").write_text(
+        json.dumps(
+            {
+                "dungeons": [
+                    {
+                        "id": "first_dungeon",
+                        "name": "第一个副本",
+                        "server_day": 3,
+                        "region": "测试区",
+                        "requirements": {"普通": 10_000},
+                        "status": "confirmed",
+                    },
+                    {
+                        "id": "second_dungeon",
+                        "name": "第二个副本",
+                        "server_day": 3,
+                        "region": "测试区",
+                        "requirements": {"普通": 20_000},
+                        "status": "confirmed",
+                    },
                 ]
             },
             ensure_ascii=False,
@@ -107,8 +155,85 @@ async def test_daily_check_resolves_group_and_marks_only_success(
 async def test_failed_send_is_not_marked(tmp_path, monkeypatch) -> None:
     write_timeline(tmp_path)
     monkeypatch.setattr(plugin, "TIMELINE_PATH", tmp_path / "timeline.json")
+    monkeypatch.setattr(plugin, "SEND_RETRY_DELAYS_SECONDS", (0.0, 0.0, 0.0))
     instance = ZjcsGuildNotifier()
     instance._ctx = make_context(tmp_path, send_result={"sent": False})
+    instance.set_plugin_config(make_config())
+
+    await instance._run_daily_check(today=date(2026, 1, 1))
+
+    assert len(instance.ctx.send.calls) == 4
+    assert not (tmp_path / "notification_state.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_retry_success_marks_once_and_skips_on_next_check(
+    tmp_path, monkeypatch
+) -> None:
+    write_timeline(tmp_path)
+    monkeypatch.setattr(plugin, "TIMELINE_PATH", tmp_path / "timeline.json")
+    monkeypatch.setattr(plugin, "SEND_RETRY_DELAYS_SECONDS", (0.0, 0.0, 0.0))
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(
+        tmp_path,
+        send_result=[{"sent": False}, {"sent": True}],
+    )
+    instance.set_plugin_config(make_config())
+
+    await instance._run_daily_check(today=date(2026, 1, 1))
+    await instance._run_daily_check(today=date(2026, 1, 1))
+
+    assert len(instance.ctx.send.calls) == 2
+    state = json.loads(
+        (tmp_path / "notification_state.json").read_text(encoding="utf-8")
+    )
+    assert state["sent"] == ["test_dungeon:2026-01-03:2"]
+
+
+@pytest.mark.asyncio
+async def test_failed_first_reminder_does_not_block_next_reminder(
+    tmp_path, monkeypatch
+) -> None:
+    write_two_reminder_timeline(tmp_path)
+    monkeypatch.setattr(plugin, "TIMELINE_PATH", tmp_path / "timeline.json")
+    monkeypatch.setattr(plugin, "SEND_RETRY_DELAYS_SECONDS", (0.0, 0.0, 0.0))
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(
+        tmp_path,
+        send_result=[{"sent": False}, {"sent": True}, {"sent": True}],
+    )
+    instance.set_plugin_config(make_config())
+
+    await instance._run_daily_check(today=date(2026, 1, 1))
+
+    assert len(instance.ctx.send.calls) == 3
+    assert [call[1] for call in instance.ctx.send.calls] == [
+        "stream-123",
+        "stream-123",
+        "stream-123",
+    ]
+    state = json.loads(
+        (tmp_path / "notification_state.json").read_text(encoding="utf-8")
+    )
+    assert state["sent"] == [
+        "first_dungeon:2026-01-03:2",
+        "second_dungeon:2026-01-03:2",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_state_write_failure_stops_remaining_without_resending(
+    tmp_path, monkeypatch
+) -> None:
+    write_two_reminder_timeline(tmp_path)
+    monkeypatch.setattr(plugin, "TIMELINE_PATH", tmp_path / "timeline.json")
+
+    def fail_mark_sent(_state, _key: str) -> None:
+        raise plugin.StateFileError("state write failed")
+
+    monkeypatch.setattr(plugin.NotificationState, "mark_sent", fail_mark_sent)
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(tmp_path)
     instance.set_plugin_config(make_config())
 
     await instance._run_daily_check(today=date(2026, 1, 1))
@@ -184,6 +309,133 @@ async def test_lifecycle_stops_and_restarts_daily_task(tmp_path) -> None:
     await instance.on_unload()
     assert instance._daily_task is None
     assert second_task.cancelled()
+
+
+@pytest.mark.asyncio
+async def test_unload_cancels_retry_sleep(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(plugin, "SEND_RETRY_DELAYS_SECONDS", (60.0,))
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(tmp_path, send_result={"sent": False})
+    task = asyncio.create_task(
+        instance._send_reminder_with_retry("测试通知", "stream-123")
+    )
+    instance._daily_task = task
+
+    await asyncio.sleep(0)
+    await instance.on_unload()
+
+    assert task.cancelled()
+    assert len(instance.ctx.send.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_resolve_group_stream_reuses_single_matching_stream(tmp_path) -> None:
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(
+        tmp_path,
+        group_streams=[
+            {
+                "stream_id": "target-stream",
+                "group_id": "123456",
+                "account_id": "1194036427",
+                "scope": None,
+            }
+        ],
+    )
+
+    assert await instance._resolve_group_stream("123456") == "target-stream"
+    assert instance.ctx.chat.calls == []
+    assert instance.ctx.chat.group_stream_calls == [{"platform": "qq"}]
+
+
+@pytest.mark.asyncio
+async def test_resolve_group_stream_prefers_route_metadata_priority(tmp_path) -> None:
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(
+        tmp_path,
+        group_streams=[
+            {
+                "stream_id": "empty-route",
+                "group_id": "123456",
+                "account_id": None,
+                "scope": None,
+            },
+            {
+                "stream_id": "account-only",
+                "group_id": "123456",
+                "account_id": "1194036427",
+                "scope": None,
+            },
+            {
+                "stream_id": "scope-only",
+                "group_id": "123456",
+                "account_id": None,
+                "scope": "connection-a",
+            },
+            {
+                "stream_id": "account-and-scope",
+                "group_id": "123456",
+                "account_id": "1194036427",
+                "scope": "connection-a",
+            },
+        ],
+    )
+
+    assert await instance._resolve_group_stream("123456") == "account-and-scope"
+    assert instance.ctx.chat.calls == []
+
+
+@pytest.mark.asyncio
+async def test_resolve_group_stream_prefers_account_over_empty_duplicate(
+    tmp_path,
+) -> None:
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(
+        tmp_path,
+        group_streams=[
+            {
+                "stream_id": "empty-route",
+                "group_id": "123456",
+                "account_id": None,
+                "scope": None,
+            },
+            {
+                "stream_id": "account-route",
+                "group_id": "123456",
+                "account_id": "1194036427",
+                "scope": None,
+            },
+        ],
+    )
+
+    assert await instance._resolve_group_stream("123456") == "account-route"
+
+
+@pytest.mark.asyncio
+async def test_resolve_group_stream_ignores_other_groups_and_falls_back(
+    tmp_path,
+) -> None:
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(
+        tmp_path,
+        group_streams=[
+            {
+                "stream_id": "other-group",
+                "group_id": "654321",
+                "account_id": "1194036427",
+                "scope": None,
+            }
+        ],
+    )
+
+    assert await instance._resolve_group_stream("123456") == "stream-123"
+    assert instance.ctx.chat.calls == [
+        {
+            "platform": "qq",
+            "chat_type": "group",
+            "group_id": "123456",
+        }
+    ]
 
 
 def test_startup_catch_up_runs_today_only() -> None:
