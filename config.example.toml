@@ -1,15 +1,26 @@
 [plugin]
 enabled = false
-config_version = "1.0.0"
+config_version = "1.1.0"
 
 [target]
 group_id = ""
 
 [server]
 open_date = ""
-season_anchor_dates = {}
+
+[season_dates]
+s4_start_date = ""
+s5_start_date = ""
+s6_start_date = ""
 
 [schedule]
 daily_check_time = "09:00"
 timezone = "Asia/Shanghai"
-remind_days_before = [2, 1]
+
+[reminders]
+dungeon_remind_days = [1]
+secret_treasure_remind_days = [2, 1]
+bingo_remind_days = [4]
+scratch_remind_days = [2, 1]
+fenek_remind_days = [2, 1]
+event_remind_days = [2, 1]

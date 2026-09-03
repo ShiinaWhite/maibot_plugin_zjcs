@@ -1,13 +1,29 @@
 from datetime import date, timedelta
 
+import pytest
+
 from timeline import (
+    Reminder,
+    ReminderPolicy,
     build_reminders,
     calculate_event_date,
     format_power,
+    format_daily_reminders,
     format_reminder,
     load_timeline,
     make_notification_key,
 )
+
+
+def two_day_policy() -> ReminderPolicy:
+    return ReminderPolicy(
+        dungeon=(2,),
+        secret_treasure=(2,),
+        bingo=(2,),
+        scratch=(2,),
+        fenek=(2,),
+        event=(2,),
+    )
 
 
 def test_current_server_day_is_the_message_day() -> None:
@@ -27,7 +43,7 @@ def test_current_server_day_is_the_message_day() -> None:
         timeline,
         today=date(2026, 1, 1),
         open_date=date(2026, 1, 1),
-        remind_days_before=[2],
+        reminder_policy=two_day_policy(),
     )
 
     assert len(reminders) == 1
@@ -54,7 +70,7 @@ def test_pending_formal_power_keeps_dungeon_date_but_hides_power() -> None:
         timeline,
         today=date(2026, 1, 1),
         open_date=date(2026, 1, 1),
-        remind_days_before=[2],
+        reminder_policy=two_day_policy(),
     )
 
     assert len(reminders) == 1
@@ -82,7 +98,7 @@ def test_version_risk_is_not_added_to_group_message() -> None:
         timeline,
         today=date(2026, 1, 1),
         open_date=date(2026, 1, 1),
-        remind_days_before=[2],
+        reminder_policy=two_day_policy(),
     )
 
     assert len(reminders) == 1
@@ -115,7 +131,7 @@ def test_pending_event_is_skipped_but_pending_formal_power_dungeon_is_not() -> N
         timeline,
         today=date(2026, 1, 1),
         open_date=date(2026, 1, 1),
-        remind_days_before=[2],
+        reminder_policy=two_day_policy(),
     )
 
     assert [reminder.event_id for reminder in reminders] == ["pending_power"]
@@ -148,7 +164,7 @@ def test_secret_treasure_includes_confirmed_reward_for_known_phase() -> None:
         timeline,
         today=date(2026, 3, 17),
         open_date=date(2026, 1, 1),
-        remind_days_before=[2],
+        reminder_policy=two_day_policy(),
     )
 
     assert len(reminders) == 1
@@ -183,7 +199,7 @@ def test_secret_treasure_phase_17_falls_back_to_confirmed_category_rule() -> Non
         timeline,
         today=open_date + timedelta(days=117),
         open_date=open_date,
-        remind_days_before=[2],
+        reminder_policy=two_day_policy(),
     )
 
     assert len(reminders) == 1
@@ -200,7 +216,7 @@ def test_secret_treasure_phase_17_falls_back_to_confirmed_category_rule() -> Non
             timeline,
             today=open_date + timedelta(days=118),
             open_date=open_date,
-            remind_days_before=[2],
+            reminder_policy=two_day_policy(),
         )
         == []
     )
@@ -237,7 +253,7 @@ def test_secret_treasure_explicit_future_phase_reward_takes_priority() -> None:
         timeline,
         today=open_date + timedelta(days=117),
         open_date=open_date,
-        remind_days_before=[2],
+        reminder_policy=two_day_policy(),
     )
 
     assert len(reminders) == 1
@@ -261,7 +277,7 @@ def test_weekly_side_activity_uses_target_server_day() -> None:
         timeline,
         today=date(2026, 1, 13),
         open_date=date(2026, 1, 1),
-        remind_days_before=[2],
+        reminder_policy=two_day_policy(),
     )
 
     assert len(reminders) == 1
@@ -287,7 +303,7 @@ def test_season_day_uses_configured_anchor_when_server_day_is_absent() -> None:
         today=date(2026, 2, 1),
         open_date=None,
         season_anchor_dates={"S4": date(2026, 2, 1)},
-        remind_days_before=[2],
+        reminder_policy=two_day_policy(),
     )
 
     assert len(reminders) == 1
@@ -327,7 +343,7 @@ def test_later_season_requires_anchor_even_when_server_day_exists() -> None:
             today=date(2026, 1, 1),
             open_date=date(2026, 1, 1),
             season_anchor_dates={},
-            remind_days_before=[2],
+            reminder_policy=two_day_policy(),
         )
         == []
     )
@@ -361,3 +377,173 @@ def test_actual_timeline_contains_expected_confirmed_entries() -> None:
 def test_power_format_uses_readable_units() -> None:
     assert format_power(36_000) == "3.6万"
     assert format_power(100_000_000) == "1亿"
+
+
+def test_secret_treasure_explicit_server_day_overrides_formula() -> None:
+    open_date = date(2026, 1, 1)
+    timeline = {
+        "activity_rules": {
+            "secret_treasure_battle": {
+                "first_server_day": 8,
+                "period_days": 7,
+                "known_phases": [
+                    {
+                        "phase": 2,
+                        "server_day": 20,
+                        "name": "秘宝大作战·第2期（调整）",
+                        "featured_reward": {
+                            "name": "显式日期奖励",
+                            "status": "confirmed",
+                        },
+                        "status": "confirmed",
+                    }
+                ],
+            }
+        }
+    }
+
+    reminders = build_reminders(
+        timeline,
+        today=open_date + timedelta(days=17),
+        open_date=open_date,
+        reminder_policy=two_day_policy(),
+    )
+
+    assert len(reminders) == 1
+    assert reminders[0].event_id == "secret_treasure_2"
+    assert reminders[0].event_date == open_date + timedelta(days=19)
+    assert (
+        build_reminders(
+            timeline,
+            today=open_date + timedelta(days=12),
+            open_date=open_date,
+            reminder_policy=two_day_policy(),
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    ("activity_name", "target_server_day", "policy_field", "days_before"),
+    [
+        ("宾果抽抽乐", 15, "bingo", 4),
+        ("幸运刮刮乐", 22, "scratch", 3),
+        ("菲涅克的谜题", 29, "fenek", 2),
+    ],
+)
+def test_weekly_activities_use_their_own_policy(
+    activity_name: str,
+    target_server_day: int,
+    policy_field: str,
+    days_before: int,
+) -> None:
+    timeline = {
+        "activity_rules": {
+            "weekly_side_activity_rotation": {
+                "first_server_day": 15,
+                "period_days": 7,
+                "rotation": ["宾果抽抽乐", "幸运刮刮乐", "菲涅克的谜题"],
+            }
+        }
+    }
+    policy_values = {
+        "dungeon": (1,),
+        "secret_treasure": (1,),
+        "bingo": (1,),
+        "scratch": (1,),
+        "fenek": (1,),
+        "event": (1,),
+    }
+    policy_values[policy_field] = (days_before,)
+    policy = ReminderPolicy(**policy_values)
+    today = date(2026, 1, 1) + timedelta(days=target_server_day - days_before - 1)
+
+    reminders = build_reminders(
+        timeline,
+        today=today,
+        open_date=date(2026, 1, 1),
+        reminder_policy=policy,
+    )
+
+    assert [reminder.name for reminder in reminders] == [activity_name]
+    assert reminders[0].remind_days_before == days_before
+
+
+def test_dungeon_and_event_use_independent_policies() -> None:
+    timeline = {
+        "dungeons": [
+            {
+                "id": "dungeon",
+                "name": "测试副本",
+                "server_day": 2,
+                "status": "confirmed",
+            }
+        ],
+        "events": [
+            {
+                "id": "event",
+                "name": "测试事件",
+                "server_day": 3,
+                "status": "confirmed",
+            }
+        ],
+    }
+    policy = ReminderPolicy(dungeon=(1,), event=(2,))
+
+    reminders = build_reminders(
+        timeline,
+        today=date(2026, 1, 1),
+        open_date=date(2026, 1, 1),
+        reminder_policy=policy,
+    )
+
+    assert [(item.event_id, item.remind_days_before) for item in reminders] == [
+        ("dungeon", 1),
+        ("event", 2),
+    ]
+
+
+def test_daily_format_merges_categories_and_groups_different_dates() -> None:
+    reminders = [
+        Reminder(
+            event_id="event",
+            category="event",
+            name="未来事件",
+            event_date=date(2026, 1, 5),
+            remind_days_before=4,
+            date_label="开放日期",
+            payload={},
+            current_server_day=1,
+        ),
+        Reminder(
+            event_id="dungeon",
+            category="dungeon",
+            name="测试副本",
+            event_date=date(2026, 1, 2),
+            remind_days_before=1,
+            date_label="开放日期",
+            payload={"region": "测试区", "requirements": {"普通": 10_000}},
+            current_server_day=1,
+        ),
+        Reminder(
+            event_id="activity",
+            category="activity",
+            name="测试活动",
+            event_date=date(2026, 1, 2),
+            remind_days_before=1,
+            date_label="开放日期",
+            payload={},
+            current_server_day=1,
+        ),
+    ]
+
+    message = format_daily_reminders(reminders)
+
+    assert message.count("【杖剑传说 · 每日提醒】") == 1
+    assert message.count("明日 · 2026-01-02") == 1
+    assert message.count("4 天后 · 2026-01-05") == 1
+    assert message.index("【副本】测试区 · 测试副本") < message.index(
+        "【活动】测试活动"
+    )
+    assert "已确认准入战力：\n普通：1万" in message
+    assert message.rstrip().endswith("当前服务器进度：开服第 1 天")

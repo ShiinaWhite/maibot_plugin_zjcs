@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from collections.abc import Iterable
 from typing import Any
 
 
@@ -45,21 +46,30 @@ class NotificationState:
         return key in self._sent
 
     def mark_sent(self, key: str) -> None:
-        if not key:
-            raise ValueError("通知键不能为空")
-        if key in self._sent:
+        self.mark_sent_many([key])
+
+    def mark_sent_many(self, keys: Iterable[str]) -> None:
+        candidate_keys = list(keys)
+        if not candidate_keys or any(
+            not isinstance(key, str) or not key for key in candidate_keys
+        ):
+            raise ValueError("通知键必须是非空字符串")
+        normalized = set(candidate_keys)
+
+        updated = self._sent | normalized
+        if updated == self._sent:
             return
 
-        self._sent.add(key)
-        self._write()
+        self._write(updated)
+        self._sent = updated
 
     def keys(self) -> frozenset[str]:
         return frozenset(self._sent)
 
-    def _write(self) -> None:
+    def _write(self, sent: set[str]) -> None:
         payload: dict[str, Any] = {
             "version": self.VERSION,
-            "sent": sorted(self._sent),
+            "sent": sorted(sent),
         }
         temporary_path = self.path.with_name(f".{self.FILE_NAME}.tmp")
 

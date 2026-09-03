@@ -1,6 +1,6 @@
 {
   "manifest_version": 2,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "name": "zjcs.guild-notifier",
   "description": "《杖剑传说》公会副本、活动和重要事件提前通知插件。",
   "author": {
