@@ -200,25 +200,28 @@ async def test_failed_first_reminder_does_not_block_next_reminder(
     instance = ZjcsGuildNotifier()
     instance._ctx = make_context(
         tmp_path,
-        send_result=[{"sent": False}, {"sent": True}, {"sent": True}],
+        send_result=[
+            {"sent": False},
+            {"sent": False},
+            {"sent": False},
+            {"sent": False},
+            {"sent": True},
+        ],
     )
     instance.set_plugin_config(make_config())
 
     await instance._run_daily_check(today=date(2026, 1, 1))
 
-    assert len(instance.ctx.send.calls) == 3
-    assert [call[1] for call in instance.ctx.send.calls] == [
-        "stream-123",
-        "stream-123",
-        "stream-123",
-    ]
+    assert len(instance.ctx.send.calls) == 5
+    first_message = instance.ctx.send.calls[0][0]
+    second_message = instance.ctx.send.calls[4][0]
+    assert [call[0] for call in instance.ctx.send.calls[:4]] == [first_message] * 4
+    assert second_message != first_message
+    assert [call[1] for call in instance.ctx.send.calls] == ["stream-123"] * 5
     state = json.loads(
         (tmp_path / "notification_state.json").read_text(encoding="utf-8")
     )
-    assert state["sent"] == [
-        "first_dungeon:2026-01-03:2",
-        "second_dungeon:2026-01-03:2",
-    ]
+    assert state["sent"] == ["second_dungeon:2026-01-03:2"]
 
 
 @pytest.mark.asyncio
