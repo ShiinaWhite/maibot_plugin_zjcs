@@ -194,31 +194,37 @@ class ReminderTimesConfig(PluginConfigBase):
 
     dungeon_remind_day: int = Field(
         default=1,
+        ge=0,
         description="新副本开放前多少天提醒，用于提前准备体力；填写 0 可关闭此类提醒。",
         json_schema_extra={"label": "副本提前提醒天数"},
     )
     secret_treasure_remind_day: int = Field(
         default=2,
+        ge=0,
         description="秘宝大作战开始前多少天提醒；填写 0 可关闭此类提醒。",
         json_schema_extra={"label": "秘宝大作战提前提醒天数"},
     )
     bingo_remind_day: int = Field(
         default=4,
+        ge=0,
         description="宾果抽抽乐开始前多少天提醒，用于提前积攒果子；填写 0 可关闭此类提醒。",
         json_schema_extra={"label": "宾果抽抽乐提前提醒天数"},
     )
     scratch_remind_day: int = Field(
         default=2,
+        ge=0,
         description="幸运刮刮乐开始前多少天提醒；填写 0 可关闭此类提醒。",
         json_schema_extra={"label": "幸运刮刮乐提前提醒天数"},
     )
     fenek_remind_day: int = Field(
         default=2,
+        ge=0,
         description="菲涅克的谜题开始前多少天提醒；填写 0 可关闭此类提醒。",
         json_schema_extra={"label": "菲涅克的谜题提前提醒天数"},
     )
     event_remind_day: int = Field(
         default=2,
+        ge=0,
         description="遗物池、赛季节点及其他重要事件前多少天提醒；填写 0 可关闭此类提醒。",
         json_schema_extra={"label": "遗物池及重要事件提前提醒天数"},
     )
@@ -284,11 +290,14 @@ class ZjcsGuildNotifier(MaiBotPlugin):
     def _migrate_notification_state(self) -> None:
         """插件加载时把 V1 全局通知状态一次性迁移为按群状态。
 
-        旧版已发送键只归属配置迁移时识别出的旧目标群；迁移失败时保持
-        原文件不动，后续发送按失败关闭处理。
+        旧版已发送键优先归属配置迁移时识别出的旧目标群；识别不到时，
+        仅在当前配置规范化后恰好只有一个目标群时使用该群兜底恢复，
+        0 个或多个群时保持原文件不动，后续发送按失败关闭处理。
         """
 
         legacy_group_id = self._legacy_state_group_id
+        if not legacy_group_id:
+            legacy_group_id = self._sole_configured_group_id()
         state_path = Path(self.ctx.paths.data_dir) / NotificationState.FILE_NAME
         try:
             migrated = NotificationState.migrate_v1_file(state_path, legacy_group_id)
@@ -299,6 +308,15 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             self._logger.info(
                 "通知状态已从 V1 迁移为分群状态：group_id=%s", legacy_group_id
             )
+
+    def _sole_configured_group_id(self) -> str | None:
+        """当前配置规范化后恰好只有一个目标群时返回该群号，否则返回 None。"""
+
+        try:
+            group_ids = _normalized_group_ids(self.config.target.group_ids)
+        except RuntimeError:
+            return None
+        return group_ids[0] if len(group_ids) == 1 else None
 
     async def on_config_update(
         self,
@@ -456,42 +474,38 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             )
             for reminder in reminders
         ]
-        # 只要还有任一目标群未收到过该键，就进入本轮待发集合；
-        # 每个群再按自己的已发送状态独立判断。
-        pending = [
-            reminder
-            for reminder, key in zip(reminders, keys)
-            if any(not state.contains(group_id, key) for group_id in group_ids)
-        ]
-        if not pending:
+        reminders_with_keys = list(zip(reminders, keys))
+        # reminders 与 keys 只构造一次；每个群按自己的已发送状态
+        # 计算各自的待发集合，正文只包含该群尚未收到过的提醒。
+        group_plans: list[tuple[str, list[Reminder], list[str]]] = []
+        for group_id in group_ids:
+            group_pending = [
+                (reminder, key)
+                for reminder, key in reminders_with_keys
+                if not state.contains(group_id, key)
+            ]
+            if group_pending:
+                group_plans.append(
+                    (
+                        group_id,
+                        [reminder for reminder, _ in group_pending],
+                        [key for _, key in group_pending],
+                    )
+                )
+
+        if not group_plans:
             self._logger.info("每日检查去重完成：pending=0")
             return
 
-        pending_keys = [
-            make_notification_key(
-                reminder.event_id,
-                reminder.event_date,
-                reminder.remind_days_before,
-            )
-            for reminder in pending
-        ]
         self._logger.info(
-            "每日检查去重完成：pending=%d merged_reminders=%d",
-            len(pending),
-            len(pending),
+            "每日检查去重完成：pending=%d merged_groups=%d",
+            sum(len(group_keys) for _, _, group_keys in group_plans),
+            len(group_plans),
         )
-        # 同一轮 daily check 只构造一次合并正文，向需要的群各发送一条。
-        message = format_daily_reminders(pending)
 
-        for group_id in group_ids:
-            group_keys = [
-                key for key in pending_keys if not state.contains(group_id, key)
-            ]
-            if not group_keys:
-                self._logger.info(
-                    "目标群已拥有全部本轮通知，跳过发送：group_id=%s", group_id
-                )
-                continue
+        for group_id, group_pending, group_keys in group_plans:
+            # 同一群在一轮 daily check 中仍只收到一条合并消息。
+            message = format_daily_reminders(group_pending)
             if not await self._send_text_with_retry(message, group_id):
                 self._logger.warning(
                     "目标群通知未发送成功，不记录为已完成：group_id=%s", group_id

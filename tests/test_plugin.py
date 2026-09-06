@@ -7,6 +7,7 @@ import logging
 from types import SimpleNamespace
 
 from maibot_sdk.config import generate_plugin_config_schema, rebuild_plugin_config_data
+from pydantic import ValidationError
 import pytest
 
 import plugin
@@ -206,6 +207,35 @@ def write_three_reminder_timeline(tmp_path) -> None:
     )
 
 
+def write_two_reminder_timeline(tmp_path) -> None:
+    (tmp_path / "timeline.json").write_text(
+        json.dumps(
+            {
+                "dungeons": [
+                    {
+                        "id": "test_dungeon",
+                        "name": "测试副本",
+                        "server_day": 2,
+                        "region": "测试区",
+                        "requirements": {"普通": 10_000},
+                        "status": "confirmed",
+                    }
+                ],
+                "events": [
+                    {
+                        "id": "test_event",
+                        "name": "测试事件",
+                        "server_day": 2,
+                        "status": "confirmed",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
 def read_state_groups(tmp_path) -> dict[str, list[str]]:
     payload = json.loads(
         (tmp_path / "notification_state.json").read_text(encoding="utf-8")
@@ -245,7 +275,7 @@ async def test_daily_check_merges_three_categories_and_marks_all_keys(
     assert read_state_groups(tmp_path) == {"123456": sorted(THREE_REMINDER_KEYS)}
     assert "reminders=3" in caplog.text
     assert "pending=3" in caplog.text
-    assert "merged_reminders=3" in caplog.text
+    assert "merged_groups=1" in caplog.text
     assert "notification_keys=3" in caplog.text
 
 
@@ -411,6 +441,48 @@ async def test_previously_notified_group_is_skipped_per_group(
 
 
 @pytest.mark.asyncio
+async def test_multi_group_partial_overlap_gets_group_specific_messages(
+    tmp_path, monkeypatch
+) -> None:
+    write_two_reminder_timeline(tmp_path)
+    monkeypatch.setattr(plugin, "TIMELINE_PATH", tmp_path / "timeline.json")
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(tmp_path, send_result=[{"sent": True}, {"sent": True}])
+    config = make_config()
+    config["target"]["group_ids"] = ["111000111", "222000222"]
+    instance.set_plugin_config(config)
+    NotificationState(tmp_path / "notification_state.json").load().mark_sent(
+        "111000111", "test_dungeon:2026-01-02:1"
+    )
+    NotificationState(tmp_path / "notification_state.json").load().mark_sent(
+        "222000222", "test_event:2026-01-02:1"
+    )
+
+    await instance._run_daily_check(today=date(2026, 1, 1))
+
+    # 每群恰好一次成功发送，且按 chat 解析顺序对应 A、B。
+    assert len(instance.ctx.send.calls) == 2
+    assert [call["group_id"] for call in instance.ctx.chat.calls] == [
+        "111000111",
+        "222000222",
+    ]
+    message_a = instance.ctx.send.calls[0][0]
+    message_b = instance.ctx.send.calls[1][0]
+    # A 只缺 R2（测试事件），正文不得再包含 A 已收到的 R1（测试副本）。
+    assert "测试事件" in message_a
+    assert "测试副本" not in message_a
+    # B 只缺 R1（测试副本），正文不得再包含 B 已收到的 R2（测试事件）。
+    assert "测试副本" in message_b
+    assert "测试事件" not in message_b
+    assert message_a.count("【杖剑传说 · 每日提醒】") == 1
+    assert message_b.count("【杖剑传说 · 每日提醒】") == 1
+    both_keys = sorted(["test_dungeon:2026-01-02:1", "test_event:2026-01-02:1"])
+    groups = read_state_groups(tmp_path)
+    assert groups["111000111"] == both_keys
+    assert groups["222000222"] == both_keys
+
+
+@pytest.mark.asyncio
 async def test_multi_group_state_write_failure_keeps_other_groups(
     tmp_path, monkeypatch
 ) -> None:
@@ -485,7 +557,7 @@ async def test_missing_open_date_logs_config_error_and_skips_round(
 
 
 @pytest.mark.asyncio
-async def test_invalid_policy_logs_config_error_and_skips_round(
+async def test_negative_policy_fails_config_injection_and_daily_check_skips(
     tmp_path, monkeypatch, caplog
 ) -> None:
     write_three_reminder_timeline(tmp_path)
@@ -494,12 +566,16 @@ async def test_invalid_policy_logs_config_error_and_skips_round(
     instance._ctx = make_context(tmp_path)
     config = make_config()
     config["reminders"]["dungeon_remind_day"] = -1
-    instance.set_plugin_config(config)
+
+    with pytest.raises(ValidationError):
+        instance.set_plugin_config(config)
+    with pytest.raises(RuntimeError):
+        _ = instance.config
 
     with caplog.at_level(logging.ERROR, logger=plugin.PLUGIN_ID):
         await instance._run_daily_check(today=date(2026, 1, 1))
 
-    assert "dungeon_remind_day" in caplog.text
+    assert "每日时间线检查失败" in caplog.text
     assert not instance.ctx.chat.calls
     assert not instance.ctx.send.calls
 
@@ -574,6 +650,53 @@ async def test_on_load_keeps_v2_state_untouched(tmp_path) -> None:
     await instance.on_load()
 
     assert read_state_groups(tmp_path) == {"111": ["k1"]}
+
+
+@pytest.mark.asyncio
+async def test_on_load_recovers_v1_state_with_sole_configured_group(
+    tmp_path, monkeypatch
+) -> None:
+    state_path = tmp_path / "notification_state.json"
+    state_path.write_text(
+        json.dumps({"version": 1, "sent": ["k1", "k2"]}), encoding="utf-8"
+    )
+    monkeypatch.setattr(plugin, "CONFIG_PATH", tmp_path / "missing-config.toml")
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(tmp_path)
+    config = make_config()
+    config["plugin"]["enabled"] = False
+    config["target"] = {"group_ids": ["611817038"]}
+    instance.set_plugin_config(config)
+    assert instance._legacy_state_group_id is None
+
+    await instance.on_load()
+
+    assert read_state_groups(tmp_path) == {"611817038": ["k1", "k2"]}
+
+
+@pytest.mark.asyncio
+async def test_on_load_refuses_v1_state_with_multiple_configured_groups(
+    tmp_path, monkeypatch, caplog
+) -> None:
+    state_path = tmp_path / "notification_state.json"
+    state_path.write_text(json.dumps({"version": 1, "sent": ["k1"]}), encoding="utf-8")
+    monkeypatch.setattr(plugin, "CONFIG_PATH", tmp_path / "missing-config.toml")
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(tmp_path)
+    config = make_config()
+    config["plugin"]["enabled"] = False
+    config["target"] = {"group_ids": ["111000111", "222000222"]}
+    instance.set_plugin_config(config)
+    assert instance._legacy_state_group_id is None
+
+    with caplog.at_level(logging.ERROR, logger=plugin.PLUGIN_ID):
+        await instance.on_load()
+
+    assert "通知状态迁移失败" in caplog.text
+    assert json.loads(state_path.read_text(encoding="utf-8")) == {
+        "version": 1,
+        "sent": ["k1"],
+    }
 
 
 @pytest.mark.asyncio
@@ -975,6 +1098,7 @@ def test_config_schema_reminders_are_single_integers_with_zero_hint() -> None:
     for field in reminder_fields.values():
         assert field["type"] == "integer"
         assert field["type"] != "array"
+        assert field["min"] == 0
         assert "填写 0 可关闭此类提醒" in field["description"]
 
 

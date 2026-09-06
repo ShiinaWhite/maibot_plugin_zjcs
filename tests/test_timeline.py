@@ -559,6 +559,11 @@ def test_validate_remind_day_accepts_zero_and_rejects_invalid() -> None:
             validate_remind_day(invalid, "dungeon_remind_day")
 
 
+def test_validated_policy_rejects_negative_day_as_runtime_defense() -> None:
+    with pytest.raises(ValueError, match="dungeon_remind_day"):
+        ReminderPolicy(dungeon=-1).validated()
+
+
 def test_zero_policy_disables_all_categories() -> None:
     open_date = date(2026, 1, 1)
     timeline = {
