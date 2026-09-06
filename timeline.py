@@ -34,29 +34,31 @@ class Reminder:
 
 @dataclass(frozen=True)
 class ReminderPolicy:
-    dungeon: tuple[int, ...] = (1,)
-    secret_treasure: tuple[int, ...] = (2, 1)
-    bingo: tuple[int, ...] = (4,)
-    scratch: tuple[int, ...] = (2, 1)
-    fenek: tuple[int, ...] = (2, 1)
-    event: tuple[int, ...] = (2, 1)
+    """每类内容提前提醒的天数；0 表示关闭该类别提醒。"""
+
+    dungeon: int = 1
+    secret_treasure: int = 2
+    bingo: int = 4
+    scratch: int = 2
+    fenek: int = 2
+    event: int = 2
 
     def validated(self) -> ReminderPolicy:
         return ReminderPolicy(
-            dungeon=validate_remind_days(self.dungeon, "dungeon_remind_days"),
-            secret_treasure=validate_remind_days(
-                self.secret_treasure, "secret_treasure_remind_days"
+            dungeon=validate_remind_day(self.dungeon, "dungeon_remind_day"),
+            secret_treasure=validate_remind_day(
+                self.secret_treasure, "secret_treasure_remind_day"
             ),
-            bingo=validate_remind_days(self.bingo, "bingo_remind_days"),
-            scratch=validate_remind_days(self.scratch, "scratch_remind_days"),
-            fenek=validate_remind_days(self.fenek, "fenek_remind_days"),
-            event=validate_remind_days(self.event, "event_remind_days"),
+            bingo=validate_remind_day(self.bingo, "bingo_remind_day"),
+            scratch=validate_remind_day(self.scratch, "scratch_remind_day"),
+            fenek=validate_remind_day(self.fenek, "fenek_remind_day"),
+            event=validate_remind_day(self.event, "event_remind_day"),
         )
 
-    def weekly_days(self, activity_name: str) -> tuple[int, ...]:
+    def weekly_day(self, activity_name: str) -> int:
         policy_name = WEEKLY_ACTIVITY_POLICY_NAMES.get(activity_name)
         if policy_name is None:
-            return ()
+            return 0
         return getattr(self, policy_name)
 
 
@@ -143,7 +145,7 @@ def build_reminders(
             today=today,
             open_date=open_date,
             season_anchor_dates=anchors,
-            remind_days=policy.dungeon,
+            remind_day=policy.dungeon,
             current_server_day=current_server_day,
             payload={
                 "region": raw_dungeon.get("region"),
@@ -165,7 +167,7 @@ def build_reminders(
             today=today,
             open_date=open_date,
             season_anchor_dates=anchors,
-            remind_days=policy.event,
+            remind_day=policy.event,
             current_server_day=current_server_day,
             payload={"type": raw_event.get("type"), "status": raw_event.get("status")},
         )
@@ -176,7 +178,7 @@ def build_reminders(
         _build_secret_treasure_reminders(
             timeline,
             open_date=open_date,
-            remind_days=policy.secret_treasure,
+            remind_day=policy.secret_treasure,
             current_server_day=current_server_day,
         )
     )
@@ -328,10 +330,10 @@ def _build_secret_treasure_reminders(
     timeline: Mapping[str, Any],
     *,
     open_date: date | None,
-    remind_days: tuple[int, ...],
+    remind_day: int,
     current_server_day: int | None,
 ) -> list[Reminder]:
-    if open_date is None or current_server_day is None:
+    if open_date is None or current_server_day is None or remind_day <= 0:
         return []
 
     activity_rules = timeline.get("activity_rules")
@@ -353,55 +355,50 @@ def _build_secret_treasure_reminders(
     }
     fallback_categories = _secret_treasure_fallback_categories(rule)
 
-    reminders: list[Reminder] = []
-    for remind_days_before in remind_days:
-        target_server_day = current_server_day + remind_days_before
-        phase_number, phase = _secret_treasure_phase_for_server_day(
-            explicit_phases,
-            target_server_day=target_server_day,
-            first_server_day=first_server_day,
-            period_days=period_days,
-        )
-        if phase_number is None:
-            continue
-        name = f"秘宝大作战·第{phase_number}期"
-        payload: dict[str, Any] = {"phase": phase_number}
+    target_server_day = current_server_day + remind_day
+    phase_number, phase = _secret_treasure_phase_for_server_day(
+        explicit_phases,
+        target_server_day=target_server_day,
+        first_server_day=first_server_day,
+        period_days=period_days,
+    )
+    if phase_number is None:
+        return []
+    name = f"秘宝大作战·第{phase_number}期"
+    payload: dict[str, Any] = {"phase": phase_number}
 
-        if phase is not None:
-            phase_status = phase.get("status")
-            reward = phase.get("featured_reward")
-            if phase_status not in NOTIFIABLE_STATUSES or not isinstance(
-                reward, Mapping
-            ):
-                continue
-            if reward.get("status") not in NOTIFIABLE_STATUSES:
-                continue
-            if not isinstance(reward.get("name"), str) or not reward["name"]:
-                continue
-            phase_name = phase.get("name")
-            if isinstance(phase_name, str) and phase_name:
-                name = phase_name
-            payload["featured_reward"] = dict(reward)
-        elif phase_number > 16 and fallback_categories:
-            payload["featured_reward_category"] = fallback_categories[
-                (phase_number - 1) % len(fallback_categories)
-            ]
-        else:
-            continue
+    if phase is not None:
+        phase_status = phase.get("status")
+        reward = phase.get("featured_reward")
+        if phase_status not in NOTIFIABLE_STATUSES or not isinstance(reward, Mapping):
+            return []
+        if reward.get("status") not in NOTIFIABLE_STATUSES:
+            return []
+        if not isinstance(reward.get("name"), str) or not reward["name"]:
+            return []
+        phase_name = phase.get("name")
+        if isinstance(phase_name, str) and phase_name:
+            name = phase_name
+        payload["featured_reward"] = dict(reward)
+    elif phase_number > 16 and fallback_categories:
+        payload["featured_reward_category"] = fallback_categories[
+            (phase_number - 1) % len(fallback_categories)
+        ]
+    else:
+        return []
 
-        reminders.append(
-            Reminder(
-                event_id=f"secret_treasure_{phase_number}",
-                category="activity",
-                name=name,
-                event_date=open_date + timedelta(days=target_server_day - 1),
-                remind_days_before=remind_days_before,
-                date_label="开放日期",
-                payload=payload,
-                current_server_day=current_server_day,
-            )
+    return [
+        Reminder(
+            event_id=f"secret_treasure_{phase_number}",
+            category="activity",
+            name=name,
+            event_date=open_date + timedelta(days=target_server_day - 1),
+            remind_days_before=remind_day,
+            date_label="开放日期",
+            payload=payload,
+            current_server_day=current_server_day,
         )
-    return reminders
+    ]
 
 
 def _secret_treasure_fallback_categories(
@@ -442,9 +439,9 @@ def _build_weekly_activity_reminders(
     reminders: list[Reminder] = []
     candidate_days = sorted(
         {
-            days
+            day
             for activity_name in rotation
-            for days in reminder_policy.weekly_days(activity_name)
+            if (day := reminder_policy.weekly_day(activity_name)) > 0
         },
         reverse=True,
     )
@@ -459,7 +456,7 @@ def _build_weekly_activity_reminders(
             rotation
         )
         activity_name = rotation[rotation_index]
-        if remind_days_before not in reminder_policy.weekly_days(activity_name):
+        if reminder_policy.weekly_day(activity_name) != remind_days_before:
             continue
         event_date = open_date + timedelta(days=target_server_day - 1)
         reminders.append(
@@ -486,7 +483,7 @@ def _build_reminder(
     today: date,
     open_date: date | None,
     season_anchor_dates: Mapping[str, date],
-    remind_days: tuple[int, ...],
+    remind_day: int,
     current_server_day: int | None,
     payload: Mapping[str, Any],
 ) -> Reminder | None:
@@ -500,7 +497,7 @@ def _build_reminder(
     if event_date is None:
         return None
     days_until = (event_date - today).days
-    if days_until not in remind_days:
+    if remind_day <= 0 or days_until != remind_day:
         return None
 
     return Reminder(
@@ -527,22 +524,12 @@ def _confirmed_requirements(item: Mapping[str, Any]) -> dict[str, object]:
     }
 
 
-def validate_remind_days(
-    values: Iterable[int], field_name: str = "remind_days_before"
-) -> tuple[int, ...]:
-    normalized: set[int] = set()
-    try:
-        iterator = iter(values)
-    except TypeError as exc:
-        raise ValueError(f"{field_name} 必须至少包含一个正整数") from exc
+def validate_remind_day(value: object, field_name: str = "remind_day") -> int:
+    """校验单类别提前提醒天数；0 表示关闭，负数与布尔值无效。"""
 
-    for value in iterator:
-        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-            raise ValueError(f"{field_name} 只能包含正整数")
-        normalized.add(value)
-    if not normalized:
-        raise ValueError(f"{field_name} 必须至少包含一个正整数")
-    return tuple(sorted(normalized, reverse=True))
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{field_name} 必须是大于等于 0 的整数")
+    return value
 
 
 def _secret_treasure_phase_for_server_day(

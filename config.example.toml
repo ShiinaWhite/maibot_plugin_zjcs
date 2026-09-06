@@ -1,9 +1,9 @@
 [plugin]
 enabled = false
-config_version = "1.1.0"
+config_version = "1.2.0"
 
 [target]
-group_id = ""
+group_ids = []
 
 [server]
 open_date = ""
@@ -18,9 +18,9 @@ daily_check_time = "09:00"
 timezone = "Asia/Shanghai"
 
 [reminders]
-dungeon_remind_days = [1]
-secret_treasure_remind_days = [2, 1]
-bingo_remind_days = [4]
-scratch_remind_days = [2, 1]
-fenek_remind_days = [2, 1]
-event_remind_days = [2, 1]
+dungeon_remind_day = 1
+secret_treasure_remind_day = 2
+bingo_remind_day = 4
+scratch_remind_day = 2
+fenek_remind_day = 2
+event_remind_day = 2

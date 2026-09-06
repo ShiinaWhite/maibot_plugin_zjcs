@@ -1,10 +1,10 @@
 {
   "manifest_version": 2,
-  "version": "0.1.1",
-  "name": "zjcs.guild-notifier",
+  "version": "0.1.2",
+  "name": "杖剑助手",
   "description": "《杖剑传说》公会副本、活动和重要事件提前通知插件。",
   "author": {
-    "name": "zjcs guild notifier",
+    "name": "野生的金属乌帕",
     "url": "https://github.com/ShiinaWhite/maibot_plugin_zjcs"
   },
   "license": "UNLICENSED",

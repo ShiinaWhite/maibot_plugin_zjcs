@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass
@@ -24,7 +24,7 @@ try:
         parse_iso_date,
         Reminder,
         ReminderPolicy,
-        validate_remind_days,
+        validate_remind_day,
     )
 except ImportError:
     from state import NotificationState, StateFileError
@@ -37,7 +37,7 @@ except ImportError:
         parse_iso_date,
         Reminder,
         ReminderPolicy,
-        validate_remind_days,
+        validate_remind_day,
     )
 
 
@@ -46,6 +46,7 @@ TIMELINE_PATH = Path(__file__).with_name("timeline_v1.json")
 CONFIG_PATH = Path(__file__).with_name("config.toml")
 SEND_RETRY_DELAYS_SECONDS = (1.0, 3.0, 5.0)
 LEGACY_REMIND_DAYS_DEFAULT = (2, 1)
+LEGACY_CONFIG_VERSIONS = frozenset({"1.0.0", "1.1.0"})
 TEST_MESSAGE = """【杖剑助手 · 测试消息】
 
 如果你看到这条消息，说明插件到 QQ 群的发送链路正常。
@@ -53,12 +54,16 @@ TEST_MESSAGE = """【杖剑助手 · 测试消息】
 这不是游戏活动提醒。"""
 
 _REMINDER_FIELD_DEFAULTS = {
-    "dungeon_remind_days": (1,),
-    "secret_treasure_remind_days": (2, 1),
-    "bingo_remind_days": (4,),
-    "scratch_remind_days": (2, 1),
-    "fenek_remind_days": (2, 1),
-    "event_remind_days": (2, 1),
+    "dungeon_remind_day": 1,
+    "secret_treasure_remind_day": 2,
+    "bingo_remind_day": 4,
+    "scratch_remind_day": 2,
+    "fenek_remind_day": 2,
+    "event_remind_day": 2,
+}
+_REMINDER_FIELD_RENAMES = {
+    f"{field.removesuffix('_remind_day')}_remind_days": field
+    for field in _REMINDER_FIELD_DEFAULTS
 }
 
 
@@ -75,7 +80,7 @@ class PluginSectionConfig(PluginConfigBase):
         json_schema_extra={"label": "启用杖剑助手"},
     )
     config_version: str = Field(
-        default="1.1.0",
+        default="1.2.0",
         description="插件内部配置结构版本。",
         json_schema_extra={
             "label": "配置版本",
@@ -85,15 +90,18 @@ class PluginSectionConfig(PluginConfigBase):
 
 
 class TargetConfig(PluginConfigBase):
-    """设置每日提醒发送到哪个 QQ 群。"""
+    """设置每日提醒发送到哪些 QQ 群。"""
 
     __ui_label__ = "通知目标"
     __ui_icon__ = "users"
     __ui_order__ = 1
 
-    group_id: str = Field(
-        default="",
-        description="自动提醒发送到哪个 QQ 群。",
+    group_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "杖剑助手会向这里配置的所有 QQ 群发送提醒，可添加多个群。"
+            "每个元素都是一个 QQ 群号。"
+        ),
         json_schema_extra={
             "label": "目标 QQ 群号",
             "placeholder": "611817038",
@@ -113,7 +121,7 @@ class ServerConfig(PluginConfigBase):
         description="用于计算当前是开服第几天，格式为 YYYY-MM-DD。",
         json_schema_extra={
             "label": "开服日期",
-            "placeholder": "2026-06-19",
+            "placeholder": "YYYY-MM-DD",
         },
     )
 
@@ -172,45 +180,46 @@ class ScheduleConfig(PluginConfigBase):
         json_schema_extra={
             "label": "时区",
             "placeholder": "Asia/Shanghai",
+            "hidden": True,
         },
     )
 
 
 class ReminderTimesConfig(PluginConfigBase):
-    """不同类型内容可以分别设置提前提醒天数。"""
+    """不同类型内容可以分别设置提前提醒天数；0 表示关闭该类别。"""
 
     __ui_label__ = "提醒时间"
     __ui_icon__ = "bell"
     __ui_order__ = 5
 
-    dungeon_remind_days: list[int] = Field(
-        default_factory=lambda: [1],
-        description="新副本开放前多少天提醒，用于提前准备体力。",
+    dungeon_remind_day: int = Field(
+        default=1,
+        description="新副本开放前多少天提醒，用于提前准备体力；填写 0 可关闭此类提醒。",
         json_schema_extra={"label": "副本提前提醒天数"},
     )
-    secret_treasure_remind_days: list[int] = Field(
-        default_factory=lambda: [2, 1],
-        description="秘宝大作战开始前多少天提醒。",
+    secret_treasure_remind_day: int = Field(
+        default=2,
+        description="秘宝大作战开始前多少天提醒；填写 0 可关闭此类提醒。",
         json_schema_extra={"label": "秘宝大作战提前提醒天数"},
     )
-    bingo_remind_days: list[int] = Field(
-        default_factory=lambda: [4],
-        description="宾果抽抽乐开始前多少天提醒，用于提前积攒果子。",
+    bingo_remind_day: int = Field(
+        default=4,
+        description="宾果抽抽乐开始前多少天提醒，用于提前积攒果子；填写 0 可关闭此类提醒。",
         json_schema_extra={"label": "宾果抽抽乐提前提醒天数"},
     )
-    scratch_remind_days: list[int] = Field(
-        default_factory=lambda: [2, 1],
-        description="幸运刮刮乐开始前多少天提醒。",
+    scratch_remind_day: int = Field(
+        default=2,
+        description="幸运刮刮乐开始前多少天提醒；填写 0 可关闭此类提醒。",
         json_schema_extra={"label": "幸运刮刮乐提前提醒天数"},
     )
-    fenek_remind_days: list[int] = Field(
-        default_factory=lambda: [2, 1],
-        description="菲涅克的谜题开始前多少天提醒。",
+    fenek_remind_day: int = Field(
+        default=2,
+        description="菲涅克的谜题开始前多少天提醒；填写 0 可关闭此类提醒。",
         json_schema_extra={"label": "菲涅克的谜题提前提醒天数"},
     )
-    event_remind_days: list[int] = Field(
-        default_factory=lambda: [2, 1],
-        description="遗物池、赛季节点及其他重要事件前多少天提醒。",
+    event_remind_day: int = Field(
+        default=2,
+        description="遗物池、赛季节点及其他重要事件前多少天提醒；填写 0 可关闭此类提醒。",
         json_schema_extra={"label": "遗物池及重要事件提前提醒天数"},
     )
 
@@ -240,29 +249,56 @@ class ZjcsGuildNotifier(MaiBotPlugin):
         super().__init__()
         self._daily_task: asyncio.Task[None] | None = None
         self._logger = logging.getLogger(PLUGIN_ID)
+        self._legacy_state_group_id: str | None = None
 
     def normalize_plugin_config(
         self, config_data: Mapping[str, object] | None
     ) -> tuple[dict[str, object], bool]:
-        """把 V1 的赛季锚点和非默认统一提醒策略迁移到 V1.1 字段。"""
+        """把旧版本配置迁移到当前版本字段。
+
+        V1.0：赛季锚点和统一提醒策略；V1.1：单目标群和列表提醒天数。
+        """
 
         migrated = (
             deepcopy(dict(config_data)) if isinstance(config_data, Mapping) else {}
         )
-        legacy_config = _v1_config_for_migration(migrated)
-        changed = (
-            _migrate_v1_config(migrated, legacy_config)
-            if legacy_config is not None
-            else False
-        )
+        legacy_config = _legacy_config_for_migration(migrated)
+        changed = False
+        if legacy_config is not None:
+            legacy_group_id = _legacy_target_group_id(legacy_config)
+            if legacy_group_id:
+                self._legacy_state_group_id = legacy_group_id
+            if _config_version(legacy_config) == "1.0.0":
+                changed = _migrate_v1_config(migrated, legacy_config)
+            changed = _migrate_v1_1_config(migrated, legacy_config) or changed
         normalized, normalized_changed = super().normalize_plugin_config(migrated)
         return normalized, changed or normalized_changed
 
     async def on_load(self) -> None:
+        self._migrate_notification_state()
         self._start_daily_task()
 
     async def on_unload(self) -> None:
         await self._stop_daily_task()
+
+    def _migrate_notification_state(self) -> None:
+        """插件加载时把 V1 全局通知状态一次性迁移为按群状态。
+
+        旧版已发送键只归属配置迁移时识别出的旧目标群；迁移失败时保持
+        原文件不动，后续发送按失败关闭处理。
+        """
+
+        legacy_group_id = self._legacy_state_group_id
+        state_path = Path(self.ctx.paths.data_dir) / NotificationState.FILE_NAME
+        try:
+            migrated = NotificationState.migrate_v1_file(state_path, legacy_group_id)
+        except StateFileError as exc:
+            self._logger.error("通知状态迁移失败，发送前将按失败关闭处理：%s", exc)
+            return
+        if migrated:
+            self._logger.info(
+                "通知状态已从 V1 迁移为分群状态：group_id=%s", legacy_group_id
+            )
 
     async def on_config_update(
         self,
@@ -307,20 +343,32 @@ class ZjcsGuildNotifier(MaiBotPlugin):
 
     @Command(
         "test_send",
-        description="向配置的目标 QQ 群发送一条明确标注的链路测试消息。",
+        description="向所有已配置目标 QQ 群各发送一条明确标注的链路测试消息。",
         pattern=r"^/zjcs_test\s*$",
         permission="operator",
     )
     async def handle_test_send(self, **kwargs: object):
         del kwargs
-        try:
-            group_id = self.config.target.group_id.strip()
-        except RuntimeError:
-            group_id = ""
-        if not group_id:
+        group_ids = self._configured_group_ids()
+        if not group_ids:
             return False, "尚未配置目标 QQ 群号", True
-        succeeded = await self._send_text_with_retry(TEST_MESSAGE, group_id)
-        return succeeded, "测试消息发送成功" if succeeded else "测试消息发送失败", True
+
+        succeeded_groups: list[str] = []
+        for group_id in group_ids:
+            if await self._send_text_with_retry(TEST_MESSAGE, group_id):
+                succeeded_groups.append(group_id)
+            # 每个群独立重试，单个群失败不影响其他群的测试发送。
+
+        total = len(group_ids)
+        if len(succeeded_groups) == total:
+            return True, f"测试消息发送成功（{total}/{total} 个群）", True
+        if not succeeded_groups:
+            return False, f"测试消息发送失败（0/{total} 个群成功）", True
+        return (
+            False,
+            f"测试消息部分成功（{len(succeeded_groups)}/{total} 个群成功）",
+            True,
+        )
 
     def _start_daily_task(self) -> None:
         if not self._is_enabled():
@@ -379,8 +427,8 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             self._logger.error("每日时间线检查失败：%s", exc)
             return
 
-        group_id = config.target.group_id.strip()
-        if not group_id:
+        group_ids = _normalized_group_ids(config.target.group_ids)
+        if not group_ids:
             self._logger.warning("插件已启用，但尚未配置目标 QQ 群号")
             return
 
@@ -400,22 +448,26 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             self._logger.error("通知状态读取失败，本次跳过发送：%s", exc)
             return
 
+        keys = [
+            make_notification_key(
+                reminder.event_id,
+                reminder.event_date,
+                reminder.remind_days_before,
+            )
+            for reminder in reminders
+        ]
+        # 只要还有任一目标群未收到过该键，就进入本轮待发集合；
+        # 每个群再按自己的已发送状态独立判断。
         pending = [
             reminder
-            for reminder in reminders
-            if not state.contains(
-                make_notification_key(
-                    reminder.event_id,
-                    reminder.event_date,
-                    reminder.remind_days_before,
-                )
-            )
+            for reminder, key in zip(reminders, keys)
+            if any(not state.contains(group_id, key) for group_id in group_ids)
         ]
         if not pending:
             self._logger.info("每日检查去重完成：pending=0")
             return
 
-        keys = [
+        pending_keys = [
             make_notification_key(
                 reminder.event_id,
                 reminder.event_date,
@@ -428,16 +480,38 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             len(pending),
             len(pending),
         )
+        # 同一轮 daily check 只构造一次合并正文，向需要的群各发送一条。
         message = format_daily_reminders(pending)
-        if not await self._send_text_with_retry(message, group_id):
-            return
 
-        try:
-            state.mark_sent_many(keys)
-        except StateFileError as exc:
-            self._logger.error("合并通知已发送但状态批量写入失败：%s", exc)
-            return
-        self._logger.info("合并通知发送成功并写入 notification_keys=%d", len(keys))
+        for group_id in group_ids:
+            group_keys = [
+                key for key in pending_keys if not state.contains(group_id, key)
+            ]
+            if not group_keys:
+                self._logger.info(
+                    "目标群已拥有全部本轮通知，跳过发送：group_id=%s", group_id
+                )
+                continue
+            if not await self._send_text_with_retry(message, group_id):
+                self._logger.warning(
+                    "目标群通知未发送成功，不记录为已完成：group_id=%s", group_id
+                )
+                continue
+
+            try:
+                state.mark_sent_many(group_id, group_keys)
+            except StateFileError as exc:
+                self._logger.error(
+                    "合并通知已发送但状态批量写入失败，不声称该群完成：%s keys=%d",
+                    exc,
+                    len(group_keys),
+                )
+                continue
+            self._logger.info(
+                "合并通知发送成功并写入 notification_keys=%d group_id=%s",
+                len(group_keys),
+                group_id,
+            )
 
     def _build_configured_reminders(self, *, today: date) -> tuple[list[Reminder], int]:
         config = self.config
@@ -455,24 +529,24 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             if anchor.strip()
         }
         reminder_policy = ReminderPolicy(
-            dungeon=validate_remind_days(
-                config.reminders.dungeon_remind_days, "dungeon_remind_days"
+            dungeon=validate_remind_day(
+                config.reminders.dungeon_remind_day, "dungeon_remind_day"
             ),
-            secret_treasure=validate_remind_days(
-                config.reminders.secret_treasure_remind_days,
-                "secret_treasure_remind_days",
+            secret_treasure=validate_remind_day(
+                config.reminders.secret_treasure_remind_day,
+                "secret_treasure_remind_day",
             ),
-            bingo=validate_remind_days(
-                config.reminders.bingo_remind_days, "bingo_remind_days"
+            bingo=validate_remind_day(
+                config.reminders.bingo_remind_day, "bingo_remind_day"
             ),
-            scratch=validate_remind_days(
-                config.reminders.scratch_remind_days, "scratch_remind_days"
+            scratch=validate_remind_day(
+                config.reminders.scratch_remind_day, "scratch_remind_day"
             ),
-            fenek=validate_remind_days(
-                config.reminders.fenek_remind_days, "fenek_remind_days"
+            fenek=validate_remind_day(
+                config.reminders.fenek_remind_day, "fenek_remind_day"
             ),
-            event=validate_remind_days(
-                config.reminders.event_remind_days, "event_remind_days"
+            event=validate_remind_day(
+                config.reminders.event_remind_day, "event_remind_day"
             ),
         )
         current_server_day = calculate_server_day(today, open_date)
@@ -596,6 +670,15 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             has_scope=False,
         )
 
+    def _configured_group_ids(self) -> list[str]:
+        """读取并规范化配置的目标群列表：去空、去重、保持顺序。"""
+
+        try:
+            raw_group_ids = self.config.target.group_ids
+        except RuntimeError:
+            return []
+        return _normalized_group_ids(raw_group_ids)
+
     def _validated_schedule(self) -> tuple[ZoneInfo, time]:
         config = self.config.schedule
         try:
@@ -634,12 +717,12 @@ def _choose_due_check_date(
     return max(scheduled_for.date(), now.date())
 
 
-def _v1_config_for_migration(
+def _legacy_config_for_migration(
     config_for_normalize: Mapping[str, object],
 ) -> dict[str, object] | None:
-    """取得 V1 原配置；Runner 升级重建后从插件自身配置文件补取旧键。"""
+    """取得旧版本（V1.0/V1.1）原配置；Runner 升级重建后从插件自身配置文件补取旧键。"""
 
-    if _config_version(config_for_normalize) == "1.0.0":
+    if _config_version(config_for_normalize) in LEGACY_CONFIG_VERSIONS:
         return deepcopy(dict(config_for_normalize))
     if not CONFIG_PATH.is_file():
         return None
@@ -648,11 +731,36 @@ def _v1_config_for_migration(
             disk_config = tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError) as exc:
         logging.getLogger(PLUGIN_ID).warning(
-            "无法读取磁盘配置以尝试 V1→V1.1 迁移，将按 Host 已提供配置继续：%s",
+            "无法读取磁盘配置以尝试旧版配置迁移，将按 Host 已提供配置继续：%s",
             exc,
         )
         return None
-    return disk_config if _config_version(disk_config) == "1.0.0" else None
+    return (
+        disk_config if _config_version(disk_config) in LEGACY_CONFIG_VERSIONS else None
+    )
+
+
+def _legacy_target_group_id(legacy_config: Mapping[str, object]) -> str:
+    """读取旧版配置中的单一目标群号；新版 group_ids 不在此列。"""
+
+    target = legacy_config.get("target")
+    if not isinstance(target, Mapping):
+        return ""
+    value = target.get("group_id")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _legacy_remind_days_tuple(values: object) -> tuple[int, ...]:
+    """把旧版提醒天数列表规范化为去重后的正整数元组；无效项忽略。"""
+
+    if not isinstance(values, (list, tuple)):
+        return ()
+    days = {
+        value
+        for value in values
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0
+    }
+    return tuple(sorted(days, reverse=True))
 
 
 def _config_version(config: Mapping[str, object]) -> str:
@@ -666,12 +774,15 @@ def _config_version(config: Mapping[str, object]) -> str:
 def _migrate_v1_config(
     config: dict[str, object], legacy_config: Mapping[str, object]
 ) -> bool:
-    """把 V1 旧值写入 Runner 已重建的 V1.1 字段。"""
+    """把 V1 旧值写入重建后的 V1.1+ 字段。"""
 
     changed = False
     legacy_server = legacy_config.get("server")
     season_dates = config.get("season_dates")
-    if isinstance(legacy_server, Mapping) and isinstance(season_dates, dict):
+    if not isinstance(season_dates, dict):
+        season_dates = {}
+        config["season_dates"] = season_dates
+    if isinstance(legacy_server, Mapping):
         legacy_anchors = legacy_server.get("season_anchor_dates")
         if isinstance(legacy_anchors, Mapping):
             for season, field_name in {
@@ -693,27 +804,79 @@ def _migrate_v1_config(
 
     legacy_schedule = legacy_config.get("schedule")
     reminders = config.get("reminders")
-    if isinstance(legacy_schedule, Mapping) and isinstance(reminders, dict):
-        legacy_values = legacy_schedule.get("remind_days_before")
-        if isinstance(legacy_values, (list, tuple)):
-            try:
-                legacy_days = validate_remind_days(legacy_values)
-            except ValueError:
-                legacy_days = ()
-        else:
-            legacy_days = ()
+    if not isinstance(reminders, dict):
+        reminders = {}
+        config["reminders"] = reminders
+    if isinstance(legacy_schedule, Mapping):
+        legacy_days = _legacy_remind_days_tuple(
+            legacy_schedule.get("remind_days_before")
+        )
+        legacy_day = max(legacy_days) if legacy_days else 0
         new_fields_are_defaults = all(
-            isinstance(value := reminders.get(field_name), (list, tuple))
-            and tuple(value) == default_days
-            for field_name, default_days in _REMINDER_FIELD_DEFAULTS.items()
+            reminders.get(field_name, default) == default
+            for field_name, default in _REMINDER_FIELD_DEFAULTS.items()
         )
         if (
-            legacy_days
+            legacy_day
             and legacy_days != LEGACY_REMIND_DAYS_DEFAULT
             and new_fields_are_defaults
         ):
             for field_name in _REMINDER_FIELD_DEFAULTS:
-                reminders[field_name] = list(legacy_days)
+                reminders[field_name] = legacy_day
+            changed = True
+
+    return changed
+
+
+def _migrate_v1_1_config(
+    config: dict[str, object], legacy_config: Mapping[str, object]
+) -> bool:
+    """把 V1.1 单目标群与列表提醒天数迁移为 V1.2 多群与单整数配置。
+
+    旧列表表示多次提醒，新版每类别只提醒一次，取旧列表中最大的有效
+    正整数以保留较早的那次提醒；无有效正整数时迁移为 0（关闭）。
+    """
+
+    changed = False
+
+    target = config.get("target")
+    if not isinstance(target, dict):
+        target = {}
+        config["target"] = target
+    legacy_group_id = _legacy_target_group_id(legacy_config)
+    if legacy_group_id:
+        current_group_ids = target.get("group_ids")
+        has_group_ids = isinstance(current_group_ids, list) and any(
+            isinstance(item, str) and item.strip() for item in current_group_ids
+        )
+        if not has_group_ids:
+            target["group_ids"] = [legacy_group_id]
+            changed = True
+    if target.pop("group_id", None) is not None:
+        changed = True
+
+    legacy_reminders = legacy_config.get("reminders")
+    reminders = config.get("reminders")
+    if not isinstance(reminders, dict):
+        reminders = {}
+        config["reminders"] = reminders
+    for old_field, new_field in _REMINDER_FIELD_RENAMES.items():
+        source_values = reminders.get(old_field)
+        if not isinstance(source_values, (list, tuple)) and isinstance(
+            legacy_reminders, Mapping
+        ):
+            source_values = legacy_reminders.get(old_field)
+        if not isinstance(source_values, (list, tuple)):
+            continue
+        reminders.pop(old_field, None)
+        default_day = _REMINDER_FIELD_DEFAULTS[new_field]
+        if reminders.get(new_field, default_day) != default_day:
+            # 新字段已有用户设置时不重复覆盖。
+            continue
+        legacy_days = _legacy_remind_days_tuple(source_values)
+        legacy_day = max(legacy_days) if legacy_days else 0
+        if reminders.get(new_field) != legacy_day:
+            reminders[new_field] = legacy_day
             changed = True
 
     return changed
@@ -723,6 +886,21 @@ def _send_succeeded(result: object) -> bool:
     if result is True:
         return True
     return isinstance(result, Mapping) and result.get("sent") is True
+
+
+def _normalized_group_ids(values: Iterable[str]) -> list[str]:
+    """去空、去重并保持确定性顺序；群号保持字符串，不转数值。"""
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        group_id = value.strip()
+        if group_id and group_id not in seen:
+            seen.add(group_id)
+            normalized.append(group_id)
+    return normalized
 
 
 def _extract_group_streams(result: object) -> list[Mapping[str, object]]:

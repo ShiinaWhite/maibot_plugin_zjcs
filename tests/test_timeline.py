@@ -12,17 +12,18 @@ from timeline import (
     format_reminder,
     load_timeline,
     make_notification_key,
+    validate_remind_day,
 )
 
 
 def two_day_policy() -> ReminderPolicy:
     return ReminderPolicy(
-        dungeon=(2,),
-        secret_treasure=(2,),
-        bingo=(2,),
-        scratch=(2,),
-        fenek=(2,),
-        event=(2,),
+        dungeon=2,
+        secret_treasure=2,
+        bingo=2,
+        scratch=2,
+        fenek=2,
+        event=2,
     )
 
 
@@ -447,14 +448,14 @@ def test_weekly_activities_use_their_own_policy(
         }
     }
     policy_values = {
-        "dungeon": (1,),
-        "secret_treasure": (1,),
-        "bingo": (1,),
-        "scratch": (1,),
-        "fenek": (1,),
-        "event": (1,),
+        "dungeon": 1,
+        "secret_treasure": 1,
+        "bingo": 1,
+        "scratch": 1,
+        "fenek": 1,
+        "event": 1,
     }
-    policy_values[policy_field] = (days_before,)
+    policy_values[policy_field] = days_before
     policy = ReminderPolicy(**policy_values)
     today = date(2026, 1, 1) + timedelta(days=target_server_day - days_before - 1)
 
@@ -488,7 +489,7 @@ def test_dungeon_and_event_use_independent_policies() -> None:
             }
         ],
     }
-    policy = ReminderPolicy(dungeon=(1,), event=(2,))
+    policy = ReminderPolicy(dungeon=1, event=2)
 
     reminders = build_reminders(
         timeline,
@@ -547,3 +548,172 @@ def test_daily_format_merges_categories_and_groups_different_dates() -> None:
     )
     assert "已确认准入战力：\n普通：1万" in message
     assert message.rstrip().endswith("当前服务器进度：开服第 1 天")
+
+
+def test_validate_remind_day_accepts_zero_and_rejects_invalid() -> None:
+    assert validate_remind_day(0, "dungeon_remind_day") == 0
+    assert validate_remind_day(4) == 4
+
+    for invalid in (-1, True, 1.5, "2", None):
+        with pytest.raises(ValueError):
+            validate_remind_day(invalid, "dungeon_remind_day")
+
+
+def test_zero_policy_disables_all_categories() -> None:
+    open_date = date(2026, 1, 1)
+    timeline = {
+        "dungeons": [
+            {
+                "id": "dungeon",
+                "name": "测试副本",
+                "server_day": 3,
+                "status": "confirmed",
+            }
+        ],
+        "events": [
+            {
+                "id": "event",
+                "name": "测试事件",
+                "server_day": 3,
+                "status": "confirmed",
+            }
+        ],
+        "activity_rules": {
+            "secret_treasure_battle": {
+                "first_server_day": 8,
+                "period_days": 7,
+                "known_phases": [
+                    {
+                        "phase": 1,
+                        "server_day": 8,
+                        "name": "秘宝大作战·第1期",
+                        "featured_reward": {
+                            "name": "测试奖励",
+                            "status": "confirmed",
+                        },
+                        "status": "confirmed",
+                    }
+                ],
+            },
+            "weekly_side_activity_rotation": {
+                "first_server_day": 2,
+                "period_days": 7,
+                "rotation": ["宾果抽抽乐", "幸运刮刮乐", "菲涅克的谜题"],
+            },
+        },
+    }
+    disabled_policy = ReminderPolicy(
+        dungeon=0,
+        secret_treasure=0,
+        bingo=0,
+        scratch=0,
+        fenek=0,
+        event=0,
+    )
+
+    # 秘宝第 1 期在第 8 天；提前 1 天应能生成，但 0 策略下全部关闭。
+    enabled_day = open_date + timedelta(days=6)
+    assert (
+        len(
+            build_reminders(
+                timeline,
+                today=enabled_day,
+                open_date=open_date,
+                reminder_policy=ReminderPolicy(
+                    dungeon=0,
+                    secret_treasure=1,
+                    bingo=0,
+                    scratch=0,
+                    fenek=0,
+                    event=0,
+                ),
+            )
+        )
+        == 1
+    )
+    assert (
+        build_reminders(
+            timeline,
+            today=enabled_day,
+            open_date=open_date,
+            reminder_policy=disabled_policy,
+        )
+        == []
+    )
+
+
+def test_each_category_generates_at_most_one_reminder_day() -> None:
+    open_date = date(2026, 1, 1)
+    timeline = {
+        "dungeons": [
+            {
+                "id": "dungeon",
+                "name": "测试副本",
+                "server_day": 3,
+                "status": "confirmed",
+            }
+        ]
+    }
+    policy = two_day_policy()
+
+    reminders = build_reminders(
+        timeline,
+        today=open_date,
+        open_date=open_date,
+        reminder_policy=policy,
+    )
+    assert [reminder.remind_days_before for reminder in reminders] == [2]
+
+    # 旧列表语义下还差 1 天会再次提醒；单整数策略只允许一次。
+    assert (
+        build_reminders(
+            timeline,
+            today=open_date + timedelta(days=1),
+            open_date=open_date,
+            reminder_policy=policy,
+        )
+        == []
+    )
+
+
+def test_weekly_activity_zero_policy_skips_that_activity() -> None:
+    open_date = date(2026, 1, 1)
+    timeline = {
+        "activity_rules": {
+            "weekly_side_activity_rotation": {
+                "first_server_day": 15,
+                "period_days": 7,
+                "rotation": ["宾果抽抽乐", "幸运刮刮乐", "菲涅克的谜题"],
+            }
+        }
+    }
+    policy = ReminderPolicy(
+        dungeon=0,
+        secret_treasure=0,
+        bingo=0,
+        scratch=2,
+        fenek=0,
+        event=0,
+    )
+
+    # 开服第 15 天轮到宾果，但宾果策略为 0，不生成提醒。
+    assert (
+        build_reminders(
+            timeline,
+            today=date(2026, 1, 13),
+            open_date=open_date,
+            reminder_policy=policy,
+        )
+        == []
+    )
+
+    # 第 22 天轮到幸运刮刮乐，提前 2 天提醒。
+    reminders = build_reminders(
+        timeline,
+        today=date(2026, 1, 20),
+        open_date=open_date,
+        reminder_policy=policy,
+    )
+    assert [reminder.name for reminder in reminders] == ["幸运刮刮乐"]
+    assert reminders[0].remind_days_before == 2
+    assert reminders[0].event_date == date(2026, 1, 22)
