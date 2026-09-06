@@ -1,8 +1,20 @@
 # MaiBot 参考实现
 
-这些参考已经提前筛选，目的是让 Codex 少做无意义搜索。
+这些参考已经提前筛选，目的是减少后续开发的重复检索。
 
 最终以**当前项目中的 MaiBot / maibot_sdk API** 为事实来源。
+
+## 0. 本项目已验证的正式能力
+
+以下能力已在生产代码（`plugin.py`）中实际使用并通过验收，可直接复用：
+
+- `ctx.chat.get_group_streams(platform="qq")`：获取 QQ 群已有聊天流；
+- `ctx.chat.open_session(platform="qq", chat_type="group", group_id=...)`：为尚无 stream 的群解析 `stream_id`；
+- `ctx.send.text(text, stream_id, return_details=True)`：主动发送文本，返回值可确认是否成功；
+- `ctx.paths.data_dir`：插件数据目录（通知状态持久化位置）；
+- 插件配置模型（`PluginConfigBase`）与 WebUI Schema 生成、`on_config_update` 热更新处理。
+
+目标解析策略：**优先复用已有 group stream，不存在时才 `open_session`**；`group_id` 是稳定配置身份，`stream_id` 是运行时标识，二者不混用。
 
 ## 1. 定时任务与插件生命周期
 
@@ -92,7 +104,7 @@ QQ `group_id` 是配置中的稳定身份。
 
 ## 不要复制 Hot News 的完整架构
 
-当前 V1 不需要：
+本项目当前不需要：
 
 - 热点抓取；
 - 多来源系统；
