@@ -104,7 +104,7 @@ class TargetConfig(PluginConfigBase):
         ),
         json_schema_extra={
             "label": "目标 QQ 群号",
-            "placeholder": "611817038",
+            "placeholder": "123456789",
         },
     )
 

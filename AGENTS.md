@@ -1,4 +1,6 @@
-# 项目级 Multi-Agent 工作流
+# Codex 环境下的 Multi-Agent 工作流
+
+本节仅适用于支持下述 Codex 原生 Multi-Agent 配置的开发环境；其他实现模型仍遵循 Lead 负责决策、真实 Diff 验证、独立 Review 等原则，但不要求使用相同角色名、模型或调用参数。
 
 ## 授权与触发条件
 
