@@ -1,6 +1,6 @@
 [plugin]
 enabled = false
-config_version = "1.3.0"
+config_version = "1.4.0"
 
 [target]
 group_ids = []
@@ -26,5 +26,5 @@ fenek_remind_day = 2
 event_remind_day = 2
 
 [command]
-# 管理员 QQ 号；留空则所有人都可以使用指令
-admin_qq = ""
+# 管理员 QQ 号列表；留空则所有人都可以使用指令
+admin_qqs = []

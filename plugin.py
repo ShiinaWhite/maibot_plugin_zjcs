@@ -47,17 +47,18 @@ CONFIG_PATH = Path(__file__).with_name("config.toml")
 SEND_RETRY_DELAYS_SECONDS = (1.0, 3.0, 5.0)
 LEGACY_REMIND_DAYS_DEFAULT = (2, 1)
 LEGACY_CONFIG_VERSIONS = frozenset({"1.0.0", "1.1.0"})
-PREVIOUS_CONFIG_VERSIONS = frozenset({"1.2.0"})
-CURRENT_CONFIG_VERSION = "1.3.0"
+PREVIOUS_CONFIG_VERSIONS = frozenset({"1.2.0", "1.3.0"})
+CURRENT_CONFIG_VERSION = "1.4.0"
 COMMAND_PATTERN = r"^/(?:杖剑传说|zjcs)(?:\s+(?P<sub>\S+))?\s*$"
 COMMAND_DENIED_MESSAGE = "你没有权限使用杖剑助手指令。"
+TEST_GROUP_ONLY_MESSAGE = "测试指令只能在 QQ 群中使用。"
 COMMAND_HELP_MESSAGE = """【杖剑助手 · 指令帮助】
 
 /杖剑传说 预览
 查看今天按当前配置会生成的提醒，不影响提醒状态。
 
 /杖剑传说 测试
-向已配置的通知群实际发送一条链路测试消息。
+在当前 QQ 群发送一条链路测试消息。
 
 缩写：/zjcs 预览、/zjcs 测试；发送 /杖剑传说 或 /zjcs 可随时查看本帮助。"""
 TEST_MESSAGE = """【杖剑助手 · 测试消息】
@@ -250,11 +251,11 @@ class CommandConfig(PluginConfigBase):
     __ui_icon__ = "terminal"
     __ui_order__ = 6
 
-    admin_qq: str = Field(
-        default="",
-        description="填写后仅该 QQ 账号可以使用杖剑助手指令；留空则所有人都可以使用。",
+    admin_qqs: list[str] = Field(
+        default_factory=list,
+        description="填写后仅列表中的 QQ 账号可以使用杖剑助手指令；留空列表则所有人都可以使用。",
         json_schema_extra={
-            "label": "管理员 QQ 号",
+            "label": "管理员 QQ 号列表",
             "placeholder": "123456789",
         },
     )
@@ -294,7 +295,8 @@ class ZjcsGuildNotifier(MaiBotPlugin):
         """把旧版本配置迁移到当前版本字段。
 
         V1.0：赛季锚点和统一提醒策略；V1.1：单目标群和列表提醒天数；
-        V1.2 → V1.3：新增指令设置（command.admin_qq），仅更新版本号。
+        V1.2 → V1.4：新增指令设置；V1.3 单管理员 admin_qq 迁移为
+        admin_qqs 列表。
         """
 
         migrated = (
@@ -370,12 +372,15 @@ class ZjcsGuildNotifier(MaiBotPlugin):
         self,
         stream_id: str = "",
         user_id: str = "",
+        group_id: str = "",
+        platform: str = "",
         matched_groups: Mapping[str, object] | None = None,
         **kwargs: object,
     ):
         del kwargs
         if not self._is_command_allowed(user_id):
-            return False, COMMAND_DENIED_MESSAGE, True
+            # Host 不会转发 return 文本，未授权提示必须主动发送到来源 stream。
+            return await self._deny_command(stream_id)
 
         subcommand = ""
         if isinstance(matched_groups, Mapping):
@@ -383,39 +388,54 @@ class ZjcsGuildNotifier(MaiBotPlugin):
         if subcommand == "预览":
             return await self._run_preview(stream_id)
         if subcommand == "测试":
-            return await self._run_test_send()
+            return await self._run_test_send(stream_id, group_id, platform)
         # 帮助、无参数与未知子命令统一返回帮助。
         return await self._send_command_help(stream_id)
 
     def _is_command_allowed(self, sender_qq: object) -> bool:
-        """统一指令授权：未配置管理员时所有人可用，配置后仅该 QQ 账号可用。"""
+        """统一指令授权：管理员列表为空时所有人可用，否则仅列表内 QQ 可用。"""
 
         try:
-            admin_qq = str(self.config.command.admin_qq or "").strip()
+            raw_admin_qqs = self.config.command.admin_qqs
         except RuntimeError:
             return False
-        if not admin_qq:
+        admin_qqs = _normalized_group_ids(raw_admin_qqs)
+        if not admin_qqs:
             return True
-        return str(sender_qq or "").strip() == admin_qq
+        return str(sender_qq or "").strip() in admin_qqs
 
-    async def _send_command_help(self, stream_id: str):
+    async def _reply_text_to_stream(
+        self,
+        stream_id: str,
+        text: str,
+        success_note: str,
+        failure_note: str,
+    ):
+        """向命令来源 stream 发送一条文本；stream 缺失时安全失败，不猜测目标。"""
+
         if not stream_id:
             return False, "缺少命令来源 stream_id", True
         try:
             result = await self.ctx.send.text(
-                COMMAND_HELP_MESSAGE,
+                text,
                 stream_id,
                 return_details=True,
             )
         except (OSError, RuntimeError) as exc:
             # send.text 经 Host RPC 转发，失败以 OSError/RuntimeError 族抛出。
-            self._logger.error("指令帮助发送失败：%s", exc)
-            return False, "指令帮助发送失败", True
+            self._logger.error("%s：%s", failure_note, exc)
+            return False, failure_note, True
         succeeded = _send_succeeded(result)
-        return (
-            succeeded,
-            "指令帮助已发送" if succeeded else "指令帮助发送失败",
-            True,
+        return succeeded, success_note if succeeded else failure_note, True
+
+    async def _send_command_help(self, stream_id: str):
+        return await self._reply_text_to_stream(
+            stream_id, COMMAND_HELP_MESSAGE, "指令帮助已发送", "指令帮助发送失败"
+        )
+
+    async def _deny_command(self, stream_id: str):
+        return await self._reply_text_to_stream(
+            stream_id, COMMAND_DENIED_MESSAGE, "已拒绝未授权指令", "未授权提示发送失败"
         )
 
     async def _run_preview(self, stream_id: str):
@@ -441,26 +461,18 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             True,
         )
 
-    async def _run_test_send(self):
-        group_ids = self._configured_group_ids()
-        if not group_ids:
-            return False, "尚未配置目标 QQ 群号", True
+    async def _run_test_send(self, stream_id: str, group_id: str, platform: str):
+        """链路测试只作用于发起指令的当前 QQ 群，与自动提醒目标群无关。"""
 
-        succeeded_groups: list[str] = []
-        for group_id in group_ids:
-            if await self._send_text_with_retry(TEST_MESSAGE, group_id):
-                succeeded_groups.append(group_id)
-            # 每个群独立重试，单个群失败不影响其他群的测试发送。
-
-        total = len(group_ids)
-        if len(succeeded_groups) == total:
-            return True, f"测试消息发送成功（{total}/{total} 个群）", True
-        if not succeeded_groups:
-            return False, f"测试消息发送失败（0/{total} 个群成功）", True
-        return (
-            False,
-            f"测试消息部分成功（{len(succeeded_groups)}/{total} 个群成功）",
-            True,
+        if platform.strip() != "qq" or not group_id.strip():
+            return await self._reply_text_to_stream(
+                stream_id,
+                TEST_GROUP_ONLY_MESSAGE,
+                "已提示测试指令使用范围",
+                "测试指令提示发送失败",
+            )
+        return await self._reply_text_to_stream(
+            stream_id, TEST_MESSAGE, "测试消息已发送", "测试消息发送失败"
         )
 
     def _start_daily_task(self) -> None:
@@ -759,15 +771,6 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             has_scope=False,
         )
 
-    def _configured_group_ids(self) -> list[str]:
-        """读取并规范化配置的目标群列表：去空、去重、保持顺序。"""
-
-        try:
-            raw_group_ids = self.config.target.group_ids
-        except RuntimeError:
-            return []
-        return _normalized_group_ids(raw_group_ids)
-
     def _validated_schedule(self) -> tuple[ZoneInfo, time]:
         config = self.config.schedule
         try:
@@ -861,10 +864,11 @@ def _config_version(config: Mapping[str, object]) -> str:
 
 
 def _migrate_config_version(config: dict[str, object]) -> bool:
-    """把上一版本配置升级到当前版本：保留全部字段，只更新版本号。
+    """把上一版本配置升级到当前版本；重复执行不再变更。
 
-    1.2.0 → 1.3.0 仅新增 command 配置节（默认空管理员），不改动
-    群目标、开服日期、调度、提醒天数与赛季锚点；重复执行不再变更。
+    1.2.0 → 1.4.0 仅新增 command 配置节（默认空管理员列表）；
+    1.3.0 → 1.4.0 把单管理员 admin_qq 迁移为 admin_qqs 列表，
+    空字符串迁移为空列表，并删除旧字段。
     """
 
     if _config_version(config) not in PREVIOUS_CONFIG_VERSIONS:
@@ -872,6 +876,16 @@ def _migrate_config_version(config: dict[str, object]) -> bool:
     plugin_section = config.get("plugin")
     if not isinstance(plugin_section, dict):
         return False
+    command_section = config.get("command")
+    if isinstance(command_section, dict):
+        legacy_admin_qq = command_section.pop("admin_qq", None)
+        admin_qqs = command_section.get("admin_qqs")
+        if not isinstance(admin_qqs, list):
+            admin_qqs = []
+        normalized_admin = str(legacy_admin_qq or "").strip()
+        if normalized_admin and normalized_admin not in admin_qqs:
+            admin_qqs = [normalized_admin, *admin_qqs]
+        command_section["admin_qqs"] = admin_qqs
     plugin_section["config_version"] = CURRENT_CONFIG_VERSION
     return True
 
