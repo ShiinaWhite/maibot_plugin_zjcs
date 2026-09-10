@@ -47,6 +47,19 @@ CONFIG_PATH = Path(__file__).with_name("config.toml")
 SEND_RETRY_DELAYS_SECONDS = (1.0, 3.0, 5.0)
 LEGACY_REMIND_DAYS_DEFAULT = (2, 1)
 LEGACY_CONFIG_VERSIONS = frozenset({"1.0.0", "1.1.0"})
+PREVIOUS_CONFIG_VERSIONS = frozenset({"1.2.0"})
+CURRENT_CONFIG_VERSION = "1.3.0"
+COMMAND_PATTERN = r"^/(?:杖剑传说|zjcs)(?:\s+(?P<sub>\S+))?\s*$"
+COMMAND_DENIED_MESSAGE = "你没有权限使用杖剑助手指令。"
+COMMAND_HELP_MESSAGE = """【杖剑助手 · 指令帮助】
+
+/杖剑传说 预览
+查看今天按当前配置会生成的提醒，不影响提醒状态。
+
+/杖剑传说 测试
+向已配置的通知群实际发送一条链路测试消息。
+
+缩写：/zjcs 预览、/zjcs 测试；发送 /杖剑传说 或 /zjcs 可随时查看本帮助。"""
 TEST_MESSAGE = """【杖剑助手 · 测试消息】
 
 如果你看到这条消息，说明插件到 QQ 群的发送链路正常。
@@ -80,7 +93,7 @@ class PluginSectionConfig(PluginConfigBase):
         json_schema_extra={"label": "启用杖剑助手"},
     )
     config_version: str = Field(
-        default="1.2.0",
+        default=CURRENT_CONFIG_VERSION,
         description="插件内部配置结构版本。",
         json_schema_extra={
             "label": "配置版本",
@@ -230,6 +243,23 @@ class ReminderTimesConfig(PluginConfigBase):
     )
 
 
+class CommandConfig(PluginConfigBase):
+    """控制谁可以使用杖剑助手的聊天指令。"""
+
+    __ui_label__ = "指令设置"
+    __ui_icon__ = "terminal"
+    __ui_order__ = 6
+
+    admin_qq: str = Field(
+        default="",
+        description="填写后仅该 QQ 账号可以使用杖剑助手指令；留空则所有人都可以使用。",
+        json_schema_extra={
+            "label": "管理员 QQ 号",
+            "placeholder": "123456789",
+        },
+    )
+
+
 class ZjcsGuildNotifierConfig(PluginConfigBase):
     plugin: PluginSectionConfig = Field(default_factory=PluginSectionConfig)
     target: TargetConfig = Field(default_factory=TargetConfig)
@@ -237,6 +267,7 @@ class ZjcsGuildNotifierConfig(PluginConfigBase):
     season_dates: SeasonAnchorConfig = Field(default_factory=SeasonAnchorConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     reminders: ReminderTimesConfig = Field(default_factory=ReminderTimesConfig)
+    command: CommandConfig = Field(default_factory=CommandConfig)
 
 
 @dataclass(frozen=True)
@@ -262,7 +293,8 @@ class ZjcsGuildNotifier(MaiBotPlugin):
     ) -> tuple[dict[str, object], bool]:
         """把旧版本配置迁移到当前版本字段。
 
-        V1.0：赛季锚点和统一提醒策略；V1.1：单目标群和列表提醒天数。
+        V1.0：赛季锚点和统一提醒策略；V1.1：单目标群和列表提醒天数；
+        V1.2 → V1.3：新增指令设置（command.admin_qq），仅更新版本号。
         """
 
         migrated = (
@@ -277,6 +309,7 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             if _config_version(legacy_config) == "1.0.0":
                 changed = _migrate_v1_config(migrated, legacy_config)
             changed = _migrate_v1_1_config(migrated, legacy_config) or changed
+        changed = _migrate_config_version(migrated) or changed
         normalized, normalized_changed = super().normalize_plugin_config(migrated)
         return normalized, changed or normalized_changed
 
@@ -329,13 +362,63 @@ class ZjcsGuildNotifier(MaiBotPlugin):
         self._start_daily_task()
 
     @Command(
-        "preview",
-        description="预览今天按当前配置生成的合并提醒，不写入通知状态。",
-        pattern=r"^/zjcs_preview\s*$",
-        permission="operator",
+        "zjcs_command",
+        description="杖剑助手指令入口：帮助、预览、测试。",
+        pattern=COMMAND_PATTERN,
     )
-    async def handle_preview(self, stream_id: str = "", **kwargs: object):
+    async def handle_zjcs_command(
+        self,
+        stream_id: str = "",
+        user_id: str = "",
+        matched_groups: Mapping[str, object] | None = None,
+        **kwargs: object,
+    ):
         del kwargs
+        if not self._is_command_allowed(user_id):
+            return False, COMMAND_DENIED_MESSAGE, True
+
+        subcommand = ""
+        if isinstance(matched_groups, Mapping):
+            subcommand = str(matched_groups.get("sub") or "").strip()
+        if subcommand == "预览":
+            return await self._run_preview(stream_id)
+        if subcommand == "测试":
+            return await self._run_test_send()
+        # 帮助、无参数与未知子命令统一返回帮助。
+        return await self._send_command_help(stream_id)
+
+    def _is_command_allowed(self, sender_qq: object) -> bool:
+        """统一指令授权：未配置管理员时所有人可用，配置后仅该 QQ 账号可用。"""
+
+        try:
+            admin_qq = str(self.config.command.admin_qq or "").strip()
+        except RuntimeError:
+            return False
+        if not admin_qq:
+            return True
+        return str(sender_qq or "").strip() == admin_qq
+
+    async def _send_command_help(self, stream_id: str):
+        if not stream_id:
+            return False, "缺少命令来源 stream_id", True
+        try:
+            result = await self.ctx.send.text(
+                COMMAND_HELP_MESSAGE,
+                stream_id,
+                return_details=True,
+            )
+        except (OSError, RuntimeError) as exc:
+            # send.text 经 Host RPC 转发，失败以 OSError/RuntimeError 族抛出。
+            self._logger.error("指令帮助发送失败：%s", exc)
+            return False, "指令帮助发送失败", True
+        succeeded = _send_succeeded(result)
+        return (
+            succeeded,
+            "指令帮助已发送" if succeeded else "指令帮助发送失败",
+            True,
+        )
+
+    async def _run_preview(self, stream_id: str):
         if not stream_id:
             return False, "缺少命令来源 stream_id", True
         try:
@@ -358,14 +441,7 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             True,
         )
 
-    @Command(
-        "test_send",
-        description="向所有已配置目标 QQ 群各发送一条明确标注的链路测试消息。",
-        pattern=r"^/zjcs_test\s*$",
-        permission="operator",
-    )
-    async def handle_test_send(self, **kwargs: object):
-        del kwargs
+    async def _run_test_send(self):
         group_ids = self._configured_group_ids()
         if not group_ids:
             return False, "尚未配置目标 QQ 群号", True
@@ -782,6 +858,22 @@ def _config_version(config: Mapping[str, object]) -> str:
         return ""
     value = plugin_section.get("config_version")
     return value.strip() if isinstance(value, str) else ""
+
+
+def _migrate_config_version(config: dict[str, object]) -> bool:
+    """把上一版本配置升级到当前版本：保留全部字段，只更新版本号。
+
+    1.2.0 → 1.3.0 仅新增 command 配置节（默认空管理员），不改动
+    群目标、开服日期、调度、提醒天数与赛季锚点；重复执行不再变更。
+    """
+
+    if _config_version(config) not in PREVIOUS_CONFIG_VERSIONS:
+        return False
+    plugin_section = config.get("plugin")
+    if not isinstance(plugin_section, dict):
+        return False
+    plugin_section["config_version"] = CURRENT_CONFIG_VERSION
+    return True
 
 
 def _migrate_v1_config(

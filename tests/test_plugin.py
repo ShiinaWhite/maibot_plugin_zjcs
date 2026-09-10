@@ -4,6 +4,7 @@ import asyncio
 from datetime import date, datetime, time
 import json
 import logging
+import re
 from types import SimpleNamespace
 
 from maibot_sdk.config import generate_plugin_config_schema, rebuild_plugin_config_data
@@ -82,7 +83,7 @@ def make_context(
 
 def make_config() -> dict[str, object]:
     return {
-        "plugin": {"enabled": True, "config_version": "1.2.0"},
+        "plugin": {"enabled": True, "config_version": "1.3.0"},
         "target": {"group_ids": ["123456"]},
         "server": {"open_date": "2026-01-01"},
         "season_dates": {
@@ -102,6 +103,7 @@ def make_config() -> dict[str, object]:
             "fenek_remind_day": 1,
             "event_remind_day": 1,
         },
+        "command": {"admin_qq": ""},
     }
 
 
@@ -909,7 +911,10 @@ async def test_preview_is_marked_and_does_not_send_formal_or_write_state(
         lambda *, today: ([event_reminder, dungeon_reminder], 1),
     )
 
-    result = await instance.handle_preview(stream_id="operator-stream")
+    result = await instance.handle_zjcs_command(
+        stream_id="operator-stream",
+        matched_groups={"sub": "预览"},
+    )
 
     assert result == (True, "今日提醒预览已生成", True)
     assert len(instance.ctx.send.calls) == 1
@@ -936,7 +941,10 @@ async def test_preview_reports_unconfirmed_send_as_failure(
         lambda *, today: ([], 1),
     )
 
-    result = await instance.handle_preview(stream_id="operator-stream")
+    result = await instance.handle_zjcs_command(
+        stream_id="operator-stream",
+        matched_groups={"sub": "预览"},
+    )
 
     assert result == (False, "今日提醒预览发送失败", True)
     assert not (tmp_path / "notification_state.json").exists()
@@ -948,7 +956,7 @@ async def test_test_send_uses_normal_chain_and_does_not_write_state(tmp_path) ->
     instance._ctx = make_context(tmp_path)
     instance.set_plugin_config(make_config())
 
-    result = await instance.handle_test_send()
+    result = await instance.handle_zjcs_command(matched_groups={"sub": "测试"})
 
     assert result == (True, "测试消息发送成功（1/1 个群）", True)
     assert len(instance.ctx.send.calls) == 1
@@ -972,7 +980,7 @@ async def test_test_send_reports_full_success_across_groups(
     config["target"]["group_ids"] = ["111000111", "222000222"]
     instance.set_plugin_config(config)
 
-    result = await instance.handle_test_send()
+    result = await instance.handle_zjcs_command(matched_groups={"sub": "测试"})
 
     assert result == (True, "测试消息发送成功（2/2 个群）", True)
     assert len(instance.ctx.send.calls) == 2
@@ -1000,7 +1008,7 @@ async def test_test_send_reports_partial_success_across_groups(
     config["target"]["group_ids"] = ["111000111", "222000222", "333000333"]
     instance.set_plugin_config(config)
 
-    result = await instance.handle_test_send()
+    result = await instance.handle_zjcs_command(matched_groups={"sub": "测试"})
 
     assert result == (False, "测试消息部分成功（2/3 个群成功）", True)
     assert len(instance.ctx.send.calls) == 6
@@ -1018,7 +1026,7 @@ async def test_test_send_reports_total_failure_across_groups(
     config["target"]["group_ids"] = ["111000111", "222000222"]
     instance.set_plugin_config(config)
 
-    result = await instance.handle_test_send()
+    result = await instance.handle_zjcs_command(matched_groups={"sub": "测试"})
 
     assert result == (False, "测试消息发送失败（0/2 个群成功）", True)
     assert len(instance.ctx.send.calls) == 8
@@ -1033,7 +1041,7 @@ async def test_test_send_without_configured_groups_does_not_send(tmp_path) -> No
     config["target"]["group_ids"] = []
     instance.set_plugin_config(config)
 
-    result = await instance.handle_test_send()
+    result = await instance.handle_zjcs_command(matched_groups={"sub": "测试"})
 
     assert result == (False, "尚未配置目标 QQ 群号", True)
     assert not instance.ctx.send.calls
@@ -1050,6 +1058,7 @@ def test_config_schema_is_chinese_and_multi_group_ready() -> None:
         "S4+ 赛季日期",
         "每日调度",
         "提醒时间",
+        "指令设置",
     ]
     expected_labels = {
         "plugin": {"enabled": "启用杖剑助手", "config_version": "配置版本"},
@@ -1069,6 +1078,7 @@ def test_config_schema_is_chinese_and_multi_group_ready() -> None:
             "fenek_remind_day": "菲涅克的谜题提前提醒天数",
             "event_remind_day": "遗物池及重要事件提前提醒天数",
         },
+        "command": {"admin_qq": "管理员 QQ 号"},
     }
     for section_name, labels in expected_labels.items():
         for field_name, label in labels.items():
@@ -1126,10 +1136,10 @@ def test_config_schema_reminders_are_single_integers_with_zero_hint() -> None:
         assert "填写 0 可关闭此类提醒" in field["description"]
 
 
-def test_config_defaults_match_v1_2_production_policy() -> None:
+def test_config_defaults_match_v1_3_production_policy() -> None:
     config = plugin.ZjcsGuildNotifierConfig()
 
-    assert config.plugin.config_version == "1.2.0"
+    assert config.plugin.config_version == "1.3.0"
     assert config.target.group_ids == []
     assert config.reminders.dungeon_remind_day == 1
     assert config.reminders.secret_treasure_remind_day == 2
@@ -1140,29 +1150,224 @@ def test_config_defaults_match_v1_2_production_policy() -> None:
     assert config.season_dates.s4_start_date == ""
     assert config.season_dates.s5_start_date == ""
     assert config.season_dates.s6_start_date == ""
+    assert config.command.admin_qq == ""
 
 
-def test_public_default_config_contains_only_v1_2_fields() -> None:
+def test_config_schema_declares_command_admin_field() -> None:
+    schema = generate_plugin_config_schema(plugin.ZjcsGuildNotifierConfig)
+    field = schema["sections"]["command"]["fields"]["admin_qq"]
+
+    assert field["label"] == "管理员 QQ 号"
+    assert field["type"] == "string"
+    assert field["placeholder"] == "123456789"
+    assert "留空则所有人都可以使用" in field["description"]
+    assert "仅该 QQ 账号" in field["description"]
+
+
+def test_public_default_config_contains_only_v1_3_fields() -> None:
     default_config = ZjcsGuildNotifier().get_default_config()
 
     assert default_config["target"] == {"group_ids": []}
+    assert default_config["command"] == {"admin_qq": ""}
     assert "remind_days_before" not in default_config["schedule"]
 
 
-def test_diagnostic_commands_are_operator_only() -> None:
+def test_v1_2_0_config_migrates_to_v1_3_0_idempotently() -> None:
+    v1_2_config = make_config()
+    v1_2_config["plugin"]["config_version"] = "1.2.0"
+    v1_2_config.pop("command")
+    instance = ZjcsGuildNotifier()
+
+    rebuilt, changed = instance.normalize_plugin_config(v1_2_config)
+
+    assert changed is True
+    assert rebuilt["plugin"]["config_version"] == "1.3.0"
+    assert rebuilt["command"] == {"admin_qq": ""}
+    # 原有配置全部保留。
+    assert rebuilt["target"] == {"group_ids": ["123456"]}
+    assert rebuilt["server"] == {"open_date": "2026-01-01"}
+    assert rebuilt["schedule"]["daily_check_time"] == "09:00"
+    assert rebuilt["reminders"]["dungeon_remind_day"] == 1
+    assert rebuilt["season_dates"] == {
+        "s4_start_date": "",
+        "s5_start_date": "",
+        "s6_start_date": "",
+    }
+
+    again, changed_again = instance.normalize_plugin_config(rebuilt)
+
+    assert changed_again is False
+    assert again == rebuilt
+
+
+def test_command_registration_replaces_legacy_operator_commands() -> None:
     components = {
         component["name"]: component
         for component in ZjcsGuildNotifier().get_components()
     }
 
-    assert components["preview"]["metadata"]["permission"] == "operator"
-    assert components["preview"]["metadata"]["command_pattern"] == (
-        r"^/zjcs_preview\s*$"
+    # 旧开发阶段指令不再注册为正式 Command。
+    assert "preview" not in components
+    assert "test_send" not in components
+    assert set(components) == {"zjcs_command"}
+    metadata = components["zjcs_command"]["metadata"]
+    assert metadata["command_pattern"] == plugin.COMMAND_PATTERN
+    # 不带 Host operator gate，普通用户可进入插件内统一授权。
+    assert "permission" not in metadata
+
+
+def test_command_pattern_matches_both_roots_and_captures_subcommand() -> None:
+    matched = re.search(plugin.COMMAND_PATTERN, "/杖剑传说 预览")
+    assert matched is not None
+    assert matched.groupdict() == {"sub": "预览"}
+
+    matched = re.search(plugin.COMMAND_PATTERN, "/zjcs 测试")
+    assert matched is not None
+    assert matched.groupdict() == {"sub": "测试"}
+
+    matched = re.search(plugin.COMMAND_PATTERN, "/zjcs 帮助")
+    assert matched is not None
+    assert matched.groupdict() == {"sub": "帮助"}
+
+    matched = re.search(plugin.COMMAND_PATTERN, "/杖剑传说")
+    assert matched is not None
+    assert matched.groupdict() == {"sub": None}
+
+    assert re.search(plugin.COMMAND_PATTERN, "/zjcs_preview") is None
+    assert re.search(plugin.COMMAND_PATTERN, "/zjcs_test") is None
+
+
+def test_is_command_allowed_follows_admin_qq_config() -> None:
+    instance = ZjcsGuildNotifier()
+
+    # 未注入配置时按失败关闭处理。
+    assert instance._is_command_allowed("123456789") is False
+
+    instance.set_plugin_config(make_config())
+    assert instance._is_command_allowed("任何一个用户") is True
+    assert instance._is_command_allowed("") is True
+    assert instance._is_command_allowed(None) is True
+
+    config = make_config()
+    config["command"]["admin_qq"] = " 10000 "
+    instance.set_plugin_config(config)
+    assert instance._is_command_allowed("10000") is True
+    assert instance._is_command_allowed(" 10000 ") is True
+    assert instance._is_command_allowed("20000") is False
+    assert instance._is_command_allowed("") is False
+    assert instance._is_command_allowed(None) is False
+
+
+@pytest.mark.asyncio
+async def test_command_denies_all_subcommands_for_non_admin_without_leaking_qq(
+    tmp_path,
+) -> None:
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(tmp_path)
+    config = make_config()
+    config["command"]["admin_qq"] = "10000"
+    instance.set_plugin_config(config)
+
+    for matched_groups in (None, {}, {"sub": "帮助"}, {"sub": "预览"}, {"sub": "测试"}):
+        result = await instance.handle_zjcs_command(
+            stream_id="operator-stream",
+            user_id="99999",
+            matched_groups=matched_groups,
+        )
+        assert result == (False, plugin.COMMAND_DENIED_MESSAGE, True)
+
+    # 未授权用户不触发任何发送，也不写通知状态。
+    assert instance.ctx.send.calls == []
+    assert not (tmp_path / "notification_state.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_admin_qq_empty_allows_any_user_for_every_subcommand(
+    tmp_path, monkeypatch
+) -> None:
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(tmp_path)
+    instance.set_plugin_config(make_config())
+    monkeypatch.setattr(
+        instance,
+        "_build_configured_reminders",
+        lambda *, today: ([], 1),
     )
-    assert components["test_send"]["metadata"]["permission"] == "operator"
-    assert components["test_send"]["metadata"]["command_pattern"] == (
-        r"^/zjcs_test\s*$"
+
+    assert await instance.handle_zjcs_command(
+        stream_id="s", user_id="任何用户", matched_groups=None
+    ) == (True, "指令帮助已发送", True)
+    assert await instance.handle_zjcs_command(
+        stream_id="s", user_id="另一个用户", matched_groups={"sub": "预览"}
+    ) == (True, "今日提醒预览已生成", True)
+    assert await instance.handle_zjcs_command(
+        stream_id="s", user_id="", matched_groups={"sub": "测试"}
+    ) == (True, "测试消息发送成功（1/1 个群）", True)
+
+
+@pytest.mark.asyncio
+async def test_help_is_sent_for_bare_root_help_and_unknown_subcommand(
+    tmp_path,
+) -> None:
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(tmp_path)
+    instance.set_plugin_config(make_config())
+
+    for matched_groups in (None, {}, {"sub": "帮助"}, {"sub": "不存在"}):
+        assert await instance.handle_zjcs_command(
+            stream_id="s", matched_groups=matched_groups
+        ) == (True, "指令帮助已发送", True)
+
+    assert len(instance.ctx.send.calls) == 4
+    for message, stream_id, return_details in instance.ctx.send.calls:
+        assert stream_id == "s"
+        assert return_details is True
+        assert message == plugin.COMMAND_HELP_MESSAGE
+    assert "预览" in plugin.COMMAND_HELP_MESSAGE
+    assert "测试" in plugin.COMMAND_HELP_MESSAGE
+    assert "实际发送" in plugin.COMMAND_HELP_MESSAGE
+    assert "不影响提醒状态" in plugin.COMMAND_HELP_MESSAGE
+    assert "/zjcs 预览" in plugin.COMMAND_HELP_MESSAGE
+
+
+@pytest.mark.asyncio
+async def test_preview_alias_roots_share_one_implementation(
+    tmp_path, monkeypatch
+) -> None:
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(tmp_path)
+    instance.set_plugin_config(make_config())
+    monkeypatch.setattr(
+        instance,
+        "_build_configured_reminders",
+        lambda *, today: ([], 1),
     )
+
+    first = await instance.handle_zjcs_command(
+        stream_id="s1", matched_groups={"sub": "预览"}
+    )
+    second = await instance.handle_zjcs_command(
+        stream_id="s2", matched_groups={"sub": "预览"}
+    )
+
+    assert first == second == (True, "今日提醒预览已生成", True)
+    assert [call[1] for call in instance.ctx.send.calls] == ["s1", "s2"]
+    assert not (tmp_path / "notification_state.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_test_alias_roots_share_one_implementation(tmp_path) -> None:
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(tmp_path)
+    instance.set_plugin_config(make_config())
+
+    first = await instance.handle_zjcs_command(matched_groups={"sub": "测试"})
+    second = await instance.handle_zjcs_command(matched_groups={"sub": "测试"})
+
+    assert first == second == (True, "测试消息发送成功（1/1 个群）", True)
+    assert len(instance.ctx.send.calls) == 2
+    assert all(call[0] == plugin.TEST_MESSAGE for call in instance.ctx.send.calls)
+    assert not (tmp_path / "notification_state.json").exists()
 
 
 def test_v1_config_upgrade_migrates_anchors_groups_and_drops_obsolete_fields(
@@ -1192,7 +1397,7 @@ def test_v1_config_upgrade_migrates_anchors_groups_and_drops_obsolete_fields(
     rebuilt, changed = instance.normalize_plugin_config(prepared)
 
     assert changed is True
-    assert rebuilt["plugin"] == {"enabled": True, "config_version": "1.2.0"}
+    assert rebuilt["plugin"] == {"enabled": True, "config_version": "1.3.0"}
     assert rebuilt["target"] == {"group_ids": ["611817038"]}
     assert rebuilt["server"] == {"open_date": "2026-06-19"}
     assert "remind_days_before" not in rebuilt["schedule"]
@@ -1270,7 +1475,7 @@ def test_v1_1_config_upgrade_migrates_group_and_max_remind_day(
     rebuilt, changed = instance.normalize_plugin_config(prepared)
 
     assert changed is True
-    assert rebuilt["plugin"] == {"enabled": True, "config_version": "1.2.0"}
+    assert rebuilt["plugin"] == {"enabled": True, "config_version": "1.3.0"}
     assert rebuilt["target"] == {"group_ids": ["611817038"]}
     assert rebuilt["reminders"] == {
         "dungeon_remind_day": 1,
