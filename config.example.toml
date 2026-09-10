@@ -1,6 +1,6 @@
 [plugin]
 enabled = false
-config_version = "1.2.0"
+config_version = "1.3.0"
 
 [target]
 group_ids = []
@@ -24,3 +24,7 @@ bingo_remind_day = 4
 scratch_remind_day = 2
 fenek_remind_day = 2
 event_remind_day = 2
+
+[command]
+# 管理员 QQ 号；留空则所有人都可以使用指令
+admin_qq = ""

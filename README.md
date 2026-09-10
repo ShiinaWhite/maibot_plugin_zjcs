@@ -2,11 +2,11 @@
 
 《杖剑传说》MaiBot 公会助手插件。
 
-`杖剑助手` 是一个运行在 [MaiBot](https://github.com/MaiM-with-u/MaiBot) 上的插件（plugin id：`zjcs.guild-notifier`，当前版本 `0.1.3`），基于 MaiBot Plugin SDK 实现。它根据本地维护的《杖剑传说》时间线数据，每天定时检查服务器进度，提前向公会 QQ 群发送副本、活动和重要事件通知。
+`杖剑助手` 是一个运行在 [MaiBot](https://github.com/MaiM-with-u/MaiBot) 上的插件（plugin id：`zjcs.guild-notifier`，仓库当前版本 `0.1.4`；当前生产版本与验收状态见 [PROJECT_STATUS.md](PROJECT_STATUS.md)），基于 MaiBot Plugin SDK 实现。它根据本地维护的《杖剑传说》时间线数据，每天定时检查服务器进度，提前向公会 QQ 群发送副本、活动和重要事件通知。
 
 项目从公会真实需求出发，当前核心能力是服务器进度 / 活动 / 副本通知；未来会按公会实际使用需求继续扩展其他实用功能，不会永久限定为通知插件。
 
-## 当前能力（0.1.3）
+## 当前仓库能力（0.1.4）
 
 - **每日定时检查**：每天在配置的时间点（默认 09:00，Asia/Shanghai）检查一次本地时间线，不依赖 LLM，不使用外部接口；
 - **合并通知**：同一天命中的多个提醒合并为一条消息发给每个群；一次每日检查中，同一群最多发送一条正式合并提醒；
