@@ -47,6 +47,7 @@ CONFIG_PATH = Path(__file__).with_name("config.toml")
 SEND_RETRY_DELAYS_SECONDS = (1.0, 3.0, 5.0)
 LEGACY_REMIND_DAYS_DEFAULT = (2, 1)
 LEGACY_CONFIG_VERSIONS = frozenset({"1.0.0", "1.1.0"})
+DISK_FALLBACK_CONFIG_VERSIONS = LEGACY_CONFIG_VERSIONS | {"1.3.0"}
 PREVIOUS_CONFIG_VERSIONS = frozenset({"1.2.0", "1.3.0"})
 CURRENT_CONFIG_VERSION = "1.4.0"
 COMMAND_PATTERN = r"^/(?:杖剑传说|zjcs)(?:\s+(?P<sub>\S+))?\s*$"
@@ -296,7 +297,7 @@ class ZjcsGuildNotifier(MaiBotPlugin):
 
         V1.0：赛季锚点和统一提醒策略；V1.1：单目标群和列表提醒天数；
         V1.2 → V1.4：新增指令设置；V1.3 单管理员 admin_qq 迁移为
-        admin_qqs 列表。
+        admin_qqs 列表。Host 升级重建丢弃的旧字段按需从磁盘补取。
         """
 
         migrated = (
@@ -311,7 +312,7 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             if _config_version(legacy_config) == "1.0.0":
                 changed = _migrate_v1_config(migrated, legacy_config)
             changed = _migrate_v1_1_config(migrated, legacy_config) or changed
-        changed = _migrate_config_version(migrated) or changed
+        changed = _migrate_config_version(migrated, legacy_config) or changed
         normalized, normalized_changed = super().normalize_plugin_config(migrated)
         return normalized, changed or normalized_changed
 
@@ -812,7 +813,11 @@ def _choose_due_check_date(
 def _legacy_config_for_migration(
     config_for_normalize: Mapping[str, object],
 ) -> dict[str, object] | None:
-    """取得旧版本（V1.0/V1.1）原配置；Runner 升级重建后从插件自身配置文件补取旧键。"""
+    """取得旧版本（V1.0/V1.1/V1.3）原配置；Runner 升级重建后从插件自身配置文件补取旧键。
+
+    Host 的 rebuild 只保留新 schema 中仍存在的字段，被删除的旧字段
+    （如 V1.3 的 command.admin_qq）只能从磁盘旧配置恢复。
+    """
 
     if _config_version(config_for_normalize) in LEGACY_CONFIG_VERSIONS:
         return deepcopy(dict(config_for_normalize))
@@ -828,7 +833,9 @@ def _legacy_config_for_migration(
         )
         return None
     return (
-        disk_config if _config_version(disk_config) in LEGACY_CONFIG_VERSIONS else None
+        disk_config
+        if _config_version(disk_config) in DISK_FALLBACK_CONFIG_VERSIONS
+        else None
     )
 
 
@@ -863,31 +870,47 @@ def _config_version(config: Mapping[str, object]) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _migrate_config_version(config: dict[str, object]) -> bool:
+def _migrate_config_version(
+    config: dict[str, object],
+    legacy_disk_config: Mapping[str, object] | None = None,
+) -> bool:
     """把上一版本配置升级到当前版本；重复执行不再变更。
 
     1.2.0 → 1.4.0 仅新增 command 配置节（默认空管理员列表）；
-    1.3.0 → 1.4.0 把单管理员 admin_qq 迁移为 admin_qqs 列表，
-    空字符串迁移为空列表，并删除旧字段。
+    1.3.0 → 1.4.0 把单管理员 admin_qq 迁移为 admin_qqs 列表并删除旧字段。
+    Host 升级重建先于本迁移执行，会丢弃不在新 schema 中的 admin_qq，
+    因此必要时从磁盘旧配置恢复：仅在 admin_qqs 尚无非空值时回填。
     """
 
-    if _config_version(config) not in PREVIOUS_CONFIG_VERSIONS:
-        return False
     plugin_section = config.get("plugin")
     if not isinstance(plugin_section, dict):
         return False
+    version = _config_version(config)
+    if version not in PREVIOUS_CONFIG_VERSIONS and version != CURRENT_CONFIG_VERSION:
+        return False
+
+    changed = False
     command_section = config.get("command")
     if isinstance(command_section, dict):
+        # 直接 normalize 旧 dict 时 admin_qq 仍在内存配置中，优先取它；
+        # Host 重建后的内存配置已无 admin_qq，再从磁盘旧配置补取。
         legacy_admin_qq = command_section.pop("admin_qq", None)
-        admin_qqs = command_section.get("admin_qqs")
-        if not isinstance(admin_qqs, list):
-            admin_qqs = []
-        normalized_admin = str(legacy_admin_qq or "").strip()
-        if normalized_admin and normalized_admin not in admin_qqs:
-            admin_qqs = [normalized_admin, *admin_qqs]
-        command_section["admin_qqs"] = admin_qqs
-    plugin_section["config_version"] = CURRENT_CONFIG_VERSION
-    return True
+        if legacy_admin_qq is None and isinstance(legacy_disk_config, Mapping):
+            legacy_command = legacy_disk_config.get("command")
+            if isinstance(legacy_command, Mapping):
+                legacy_admin_qq = legacy_command.get("admin_qq")
+        if legacy_admin_qq is not None:
+            normalized_admin = str(legacy_admin_qq or "").strip()
+            admin_qqs = command_section.get("admin_qqs")
+            if not isinstance(admin_qqs, list):
+                admin_qqs = []
+            if normalized_admin and not admin_qqs:
+                command_section["admin_qqs"] = [normalized_admin]
+                changed = True
+    if version in PREVIOUS_CONFIG_VERSIONS:
+        plugin_section["config_version"] = CURRENT_CONFIG_VERSION
+        changed = True
+    return changed
 
 
 def _migrate_v1_config(
