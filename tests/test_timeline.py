@@ -9,6 +9,7 @@ from timeline import (
     calculate_event_date,
     format_power,
     format_daily_reminders,
+    format_relative_day,
     format_reminder,
     load_timeline,
     make_notification_key,
@@ -538,9 +539,10 @@ def test_daily_format_merges_categories_and_groups_different_dates() -> None:
         ),
     ]
 
-    message = format_daily_reminders(reminders)
+    message = format_daily_reminders(reminders, today=date(2026, 1, 1))
 
-    assert message.count("【杖剑传说 · 每日提醒】") == 1
+    assert message.count("【杖剑传说 · 近期提醒】") == 1
+    assert "每日提醒" not in message
     assert message.count("明日 · 2026-01-02") == 1
     assert message.count("4 天后 · 2026-01-05") == 1
     assert message.index("【副本】测试区 · 测试副本") < message.index(
@@ -548,6 +550,176 @@ def test_daily_format_merges_categories_and_groups_different_dates() -> None:
     )
     assert "已确认准入战力：\n普通：1万" in message
     assert message.rstrip().endswith("当前服务器进度：开服第 1 天")
+
+
+def test_format_relative_day_uses_colloquial_labels() -> None:
+    assert format_relative_day(0) == "今天"
+    assert format_relative_day(1) == "明天"
+    assert format_relative_day(2) == "后天"
+    assert format_relative_day(3) == "3天后"
+    assert format_relative_day(10) == "10天后"
+
+
+@pytest.mark.parametrize(
+    ("days_before", "expected_hint"),
+    [
+        (1, "准备建议：今天开始攒副本次数。"),
+        (2, "准备建议：明天开始攒副本次数。"),
+        (3, "准备建议：后天开始攒副本次数。"),
+        (4, "准备建议：3天后开始攒副本次数。"),
+        (5, "准备建议：4天后开始攒副本次数。"),
+    ],
+)
+def test_dungeon_preparation_hint_uses_relative_day_from_check_date(
+    days_before: int, expected_hint: str
+) -> None:
+    open_date = date(2026, 1, 1)
+    event_date = date(2026, 1, 4)
+    today = event_date - timedelta(days=days_before)
+    timeline = {
+        "dungeons": [
+            {
+                "id": "hint_dungeon",
+                "name": "古剑城",
+                "region": "龙之国",
+                "server_day": 4,
+                "requirements": {"普通": 10_000_000},
+                "status": "confirmed",
+            }
+        ]
+    }
+
+    reminders = build_reminders(
+        timeline,
+        today=today,
+        open_date=open_date,
+        reminder_policy=ReminderPolicy(dungeon=days_before),
+    )
+    message = format_daily_reminders(reminders, today=today)
+
+    assert len(reminders) == 1
+    assert reminders[0].event_date == event_date
+    assert expected_hint in message
+    assert "起攒副本次数" not in message
+
+
+def test_bingo_activity_includes_fruit_preparation_hint() -> None:
+    open_date = date(2026, 1, 1)
+    today = date(2026, 1, 11)
+    timeline = {
+        "activity_rules": {
+            "weekly_side_activity_rotation": {
+                "first_server_day": 15,
+                "period_days": 7,
+                "rotation": ["宾果抽抽乐"],
+            }
+        }
+    }
+
+    reminders = build_reminders(
+        timeline,
+        today=today,
+        open_date=open_date,
+        reminder_policy=ReminderPolicy(bingo=4),
+    )
+    message = format_daily_reminders(reminders, today=today)
+
+    assert [reminder.name for reminder in reminders] == ["宾果抽抽乐"]
+    assert "准备建议：现在开始攒果子，活动开始前至少留20个。" in message
+
+
+@pytest.mark.parametrize("activity_name", ["幸运刮刮乐", "菲涅克的谜题"])
+def test_other_weekly_activities_have_no_preparation_hint(activity_name: str) -> None:
+    open_date = date(2026, 1, 1)
+    timeline = {
+        "activity_rules": {
+            "weekly_side_activity_rotation": {
+                "first_server_day": 15,
+                "period_days": 7,
+                "rotation": ["宾果抽抽乐", "幸运刮刮乐", "菲涅克的谜题"],
+            }
+        }
+    }
+    if activity_name == "幸运刮刮乐":
+        policy = ReminderPolicy(scratch=2)
+        today = date(2026, 1, 20)
+    else:
+        policy = ReminderPolicy(fenek=2)
+        today = date(2026, 1, 27)
+
+    reminders = build_reminders(
+        timeline,
+        today=today,
+        open_date=open_date,
+        reminder_policy=policy,
+    )
+    message = format_daily_reminders(reminders, today=today)
+
+    assert [reminder.name for reminder in reminders] == [activity_name]
+    assert "准备建议" not in message
+    assert "至少留20个" not in message
+
+
+def test_merged_message_keeps_each_preparation_hint_in_its_own_block() -> None:
+    open_date = date(2026, 1, 1)
+    today = date(2026, 1, 12)
+    timeline = {
+        "dungeons": [
+            {
+                "id": "merged_dungeon",
+                "name": "古剑城",
+                "region": "龙之国",
+                "server_day": 14,
+                "requirements": {"普通": 10_000_000},
+                "status": "confirmed",
+            }
+        ],
+        "activity_rules": {
+            "weekly_side_activity_rotation": {
+                "first_server_day": 2,
+                "period_days": 7,
+                "rotation": ["宾果抽抽乐"],
+            }
+        },
+    }
+
+    reminders = build_reminders(
+        timeline,
+        today=today,
+        open_date=open_date,
+        reminder_policy=ReminderPolicy(dungeon=2, bingo=4),
+    )
+    message = format_daily_reminders(reminders, today=today)
+
+    assert [reminder.category for reminder in reminders] == ["dungeon", "activity"]
+    assert message.count("【杖剑传说 · 近期提醒】") == 1
+    assert "每日提醒" not in message
+    assert message.index("2 天后 · 2026-01-14") < message.index("4 天后 · 2026-01-16")
+    dungeon_hint_index = message.index("准备建议：明天开始攒副本次数。")
+    assert message.index("【副本】龙之国 · 古剑城") < dungeon_hint_index
+    assert dungeon_hint_index < message.index("4 天后 · 2026-01-16")
+    bingo_hint_index = message.index("准备建议：现在开始攒果子，活动开始前至少留20个。")
+    assert message.index("【活动】宾果抽抽乐") < bingo_hint_index
+
+
+def test_preview_format_keeps_upcoming_title_and_preparation_hints() -> None:
+    reminder = Reminder(
+        event_id="preview_dungeon",
+        category="dungeon",
+        name="预览副本",
+        event_date=date(2026, 1, 2),
+        remind_days_before=1,
+        date_label="开放日期",
+        payload={"region": "预览区", "requirements": {"普通": 10_000}},
+        current_server_day=1,
+    )
+
+    message = format_daily_reminders([reminder], today=date(2026, 1, 1), preview=True)
+
+    assert message.startswith("【杖剑助手 · 今日提醒预览】")
+    assert "仅供预览" in message
+    assert "每日提醒" not in message
+    assert "准备建议：今天开始攒副本次数。" in message
 
 
 def test_validate_remind_day_accepts_zero_and_rejects_invalid() -> None:

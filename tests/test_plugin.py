@@ -268,10 +268,13 @@ async def test_daily_check_merges_three_categories_and_marks_all_keys(
     message, stream_id, return_details = instance.ctx.send.calls[0]
     assert stream_id == "stream-123"
     assert return_details is True
-    assert message.count("【杖剑传说 · 每日提醒】") == 1
+    assert message.count("【杖剑传说 · 近期提醒】") == 1
+    assert "每日提醒" not in message
     assert "【副本】测试区 · 测试副本" in message
     assert "【活动】宾果抽抽乐" in message
     assert "【事件】测试事件" in message
+    assert "准备建议：今天开始攒副本次数。" in message
+    assert "准备建议：现在开始攒果子，活动开始前至少留20个。" in message
     assert read_state_groups(tmp_path) == {"123456": sorted(THREE_REMINDER_KEYS)}
     assert "reminders=3" in caplog.text
     assert "pending=3" in caplog.text
@@ -474,8 +477,11 @@ async def test_multi_group_partial_overlap_gets_group_specific_messages(
     # B 只缺 R1（测试副本），正文不得再包含 B 已收到的 R2（测试事件）。
     assert "测试副本" in message_b
     assert "测试事件" not in message_b
-    assert message_a.count("【杖剑传说 · 每日提醒】") == 1
-    assert message_b.count("【杖剑传说 · 每日提醒】") == 1
+    assert message_a.count("【杖剑传说 · 近期提醒】") == 1
+    assert message_b.count("【杖剑传说 · 近期提醒】") == 1
+    # A 只缺事件提醒，正文不得出现任何准备建议；B 的副本块带攒次数建议。
+    assert "准备建议" not in message_a
+    assert "准备建议：今天开始攒副本次数。" in message_b
     both_keys = sorted(["test_dungeon:2026-01-02:1", "test_event:2026-01-02:1"])
     groups = read_state_groups(tmp_path)
     assert groups["111000111"] == both_keys
@@ -867,7 +873,7 @@ async def test_resolve_group_stream_falls_back_for_other_groups(tmp_path) -> Non
 async def test_preview_is_marked_and_does_not_send_formal_or_write_state(
     tmp_path, monkeypatch
 ) -> None:
-    reminder = Reminder(
+    event_reminder = Reminder(
         event_id="preview_event",
         category="event",
         name="预览事件",
@@ -877,13 +883,30 @@ async def test_preview_is_marked_and_does_not_send_formal_or_write_state(
         payload={},
         current_server_day=1,
     )
+    dungeon_reminder = Reminder(
+        event_id="preview_dungeon",
+        category="dungeon",
+        name="预览副本",
+        event_date=date(2026, 1, 2),
+        remind_days_before=1,
+        date_label="开放日期",
+        payload={"region": "预览区", "requirements": {"普通": 10_000}},
+        current_server_day=1,
+    )
+
+    class _FixedDatetime:
+        @staticmethod
+        def now(tz=None):
+            return datetime(2026, 1, 1, 9, 0, tzinfo=tz)
+
     instance = ZjcsGuildNotifier()
     instance._ctx = make_context(tmp_path)
     instance.set_plugin_config(make_config())
+    monkeypatch.setattr(plugin, "datetime", _FixedDatetime)
     monkeypatch.setattr(
         instance,
         "_build_configured_reminders",
-        lambda *, today: ([reminder], 1),
+        lambda *, today: ([event_reminder, dungeon_reminder], 1),
     )
 
     result = await instance.handle_preview(stream_id="operator-stream")
@@ -895,6 +918,7 @@ async def test_preview_is_marked_and_does_not_send_formal_or_write_state(
     assert "【杖剑助手 · 今日提醒预览】" in message
     assert "仅供预览" in message
     assert "预览事件" in message
+    assert "准备建议：今天开始攒副本次数。" in message
     assert not (tmp_path / "notification_state.json").exists()
     assert instance.ctx.chat.group_stream_calls == []
 

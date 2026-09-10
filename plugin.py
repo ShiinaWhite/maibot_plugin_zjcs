@@ -340,10 +340,9 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             return False, "缺少命令来源 stream_id", True
         try:
             timezone, _ = self._validated_schedule()
-            reminders, _ = self._build_configured_reminders(
-                today=datetime.now(timezone).date()
-            )
-            message = format_daily_reminders(reminders, preview=True)
+            today = datetime.now(timezone).date()
+            reminders, _ = self._build_configured_reminders(today=today)
+            message = format_daily_reminders(reminders, today=today, preview=True)
             result = await self.ctx.send.text(
                 message,
                 stream_id,
@@ -505,7 +504,7 @@ class ZjcsGuildNotifier(MaiBotPlugin):
 
         for group_id, group_pending, group_keys in group_plans:
             # 同一群在一轮 daily check 中仍只收到一条合并消息。
-            message = format_daily_reminders(group_pending)
+            message = format_daily_reminders(group_pending, today=today)
             if not await self._send_text_with_retry(message, group_id):
                 self._logger.warning(
                     "目标群通知未发送成功，不记录为已完成：group_id=%s", group_id

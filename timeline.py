@@ -18,6 +18,7 @@ WEEKLY_ACTIVITY_POLICY_NAMES = {
     "幸运刮刮乐": "scratch",
     "菲涅克的谜题": "fenek",
 }
+BINGO_PREPARATION_HINT = "准备建议：现在开始攒果子，活动开始前至少留20个。"
 
 
 @dataclass(frozen=True)
@@ -259,6 +260,7 @@ def format_reminder(reminder: Reminder) -> str:
 def format_daily_reminders(
     reminders: Iterable[Reminder],
     *,
+    today: date,
     preview: bool = False,
 ) -> str:
     ordered = sorted(
@@ -270,7 +272,7 @@ def format_daily_reminders(
             item.event_id,
         ),
     )
-    title = "【杖剑助手 · 今日提醒预览】" if preview else "【杖剑传说 · 每日提醒】"
+    title = "【杖剑助手 · 今日提醒预览】" if preview else "【杖剑传说 · 近期提醒】"
     if not ordered:
         suffix = "\n\n今日没有符合当前提醒规则的内容。"
         if preview:
@@ -294,7 +296,7 @@ def format_daily_reminders(
             )
             current_group = group
 
-        lines.extend(["", _format_daily_reminder_item(reminder)])
+        lines.extend(["", _format_daily_reminder_item(reminder, today)])
 
     server_days = {
         reminder.current_server_day
@@ -304,6 +306,18 @@ def format_daily_reminders(
     if len(server_days) == 1:
         lines.extend(["", f"当前服务器进度：开服第 {server_days.pop()} 天"])
     return "\n".join(lines)
+
+
+def format_relative_day(days: int) -> str:
+    """把距今天数格式化为中文相对时间：今天/明天/后天/N天后。"""
+
+    if days == 0:
+        return "今天"
+    if days == 1:
+        return "明天"
+    if days == 2:
+        return "后天"
+    return f"{days}天后"
 
 
 def make_notification_key(
@@ -565,7 +579,7 @@ def _relative_date_label(days_before: int) -> str:
     return "明日" if days_before == 1 else f"{days_before} 天后"
 
 
-def _format_daily_reminder_item(reminder: Reminder) -> str:
+def _format_daily_reminder_item(reminder: Reminder, today: date) -> str:
     category_label = {
         "dungeon": "副本",
         "activity": "活动",
@@ -587,6 +601,7 @@ def _format_daily_reminder_item(reminder: Reminder) -> str:
                 f"{label}：{format_power(power)}"
                 for label, power in requirements.items()
             )
+        lines.extend(["", _dungeon_preparation_hint(reminder.event_date, today)])
     else:
         lines.append(f"【{category_label}】{reminder.name}")
         reward = reminder.payload.get("featured_reward")
@@ -602,7 +617,16 @@ def _format_daily_reminder_item(reminder: Reminder) -> str:
             reward_category = reminder.payload.get("featured_reward_category")
             if isinstance(reward_category, str) and reward_category:
                 lines.append(f"重点奖励类别：{reward_category}")
+        if WEEKLY_ACTIVITY_POLICY_NAMES.get(reminder.name) == "bingo":
+            lines.extend(["", BINGO_PREPARATION_HINT])
     return "\n".join(lines)
+
+
+def _dungeon_preparation_hint(event_date: date, today: date) -> str:
+    """副本开放前 1 天开始攒次数，相对时间基于本轮 check 日期。"""
+
+    days_until_prepare = (event_date - timedelta(days=1) - today).days
+    return f"准备建议：{format_relative_day(days_until_prepare)}开始攒副本次数。"
 
 
 def _positive_int(value: object) -> int | None:
