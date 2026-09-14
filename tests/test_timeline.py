@@ -7,7 +7,9 @@ from timeline import (
     ReminderPolicy,
     ScheduleEntry,
     build_reminders,
+    build_secret_treasure_overview,
     build_server_progress,
+    format_secret_treasure_overview,
     build_upcoming_schedule,
     calculate_event_date,
     dungeon_prepare_date,
@@ -1940,3 +1942,243 @@ def test_server_progress_does_not_read_reminder_policy() -> None:
     assert reminders == []
     assert progress.server_day == 88
     assert progress.next_node is not None
+
+
+def _real_secret_treasure(*, today, open_date=date(2026, 6, 19)):
+    timeline = load_timeline("timeline_v1.json")
+    return build_secret_treasure_overview(timeline, today=today, open_date=open_date)
+
+
+def test_secret_treasure_overview_day88_current_12_next_13() -> None:
+    overview = _real_secret_treasure(today=date(2026, 9, 14))
+
+    assert overview.current_server_day == 88
+    assert overview.current_phase is not None
+    assert overview.current_phase.phase == 12
+    assert overview.current_phase.event_date == date(2026, 9, 11)
+    assert overview.current_phase.reward_mode == "explicit"
+    assert overview.next_phase is not None
+    assert overview.next_phase.phase == 13
+    assert overview.next_phase.event_date == date(2026, 9, 18)
+    assert (
+        overview.next_phase.payload["featured_reward"]["name"]
+        == "自选奇迹遗物箱·龙Ⅱ（道衍天机）"
+    )
+
+
+def test_secret_treasure_phase_starting_today_counts_as_current() -> None:
+    overview = _real_secret_treasure(today=date(2026, 9, 18))
+
+    assert overview.current_server_day == 92
+    assert overview.current_phase is not None
+    assert overview.current_phase.phase == 13
+    assert overview.next_phase is not None
+    assert overview.next_phase.phase == 14
+
+
+def test_secret_treasure_before_first_phase_current_is_none() -> None:
+    overview = _real_secret_treasure(today=date(2026, 6, 20))
+
+    assert overview.current_server_day == 2
+    assert overview.current_phase is None
+    assert overview.next_phase is not None
+    assert overview.next_phase.phase == 1
+
+
+def test_secret_treasure_before_server_open_renders_safe_notice() -> None:
+    overview = _real_secret_treasure(today=date(2026, 6, 16))
+
+    assert overview.current_server_day <= 0
+    assert overview.current_phase is None
+    assert overview.next_phase is None
+    text = format_secret_treasure_overview(overview)
+    assert "当前状态：服务器尚未开服。" in text
+    assert "开服第 -" not in text
+
+
+def test_secret_treasure_format_day88_layout() -> None:
+    overview = _real_secret_treasure(today=date(2026, 9, 14))
+
+    text = format_secret_treasure_overview(overview)
+
+    assert "【杖剑助手 · 秘宝大作战】" in text
+    assert "当前期（最近已开启）：" in text
+    assert "秘宝大作战·第12期" in text
+    assert "开服第 85 天 · 2026-09-11（3 天前）" in text
+    assert "重点奖励：原初宝石" in text
+    assert "下一期：" in text
+    assert "秘宝大作战·第13期" in text
+    assert "开服第 92 天 · 2026-09-18（4 天后）" in text
+    assert "重点奖励：自选奇迹遗物箱·龙Ⅱ（道衍天机）" in text
+
+
+def test_secret_treasure_explicit_server_day_override_respected() -> None:
+    timeline = {
+        "activity_rules": {
+            "secret_treasure_battle": {
+                "first_server_day": 8,
+                "period_days": 7,
+                "known_phases": [
+                    {
+                        "phase": 2,
+                        "server_day": 30,
+                        "name": "秘宝大作战·第2期",
+                        "status": "confirmed",
+                        "featured_reward": {
+                            "name": "特殊奖励",
+                            "status": "confirmed",
+                        },
+                    }
+                ],
+            }
+        }
+    }
+
+    overview = build_secret_treasure_overview(
+        timeline, today=date(2026, 7, 18), open_date=date(2026, 6, 19)
+    )
+
+    assert overview.current_server_day == 30
+    assert overview.current_phase is not None
+    # 显式 override（第 2 期 = Day 30）覆盖了公式 Day 15。
+    assert overview.current_phase.phase == 2
+    assert overview.current_phase.server_day == 30
+    assert overview.current_phase.event_date == date(2026, 7, 18)
+    assert overview.next_phase is not None
+    assert overview.next_phase.phase == 5
+    assert overview.next_phase.server_day == 36
+
+
+def test_secret_treasure_reward_amount_is_preserved() -> None:
+    timeline = {
+        "activity_rules": {
+            "secret_treasure_battle": {
+                "first_server_day": 8,
+                "period_days": 7,
+                "known_phases": [
+                    {
+                        "phase": 1,
+                        "server_day": 8,
+                        "status": "confirmed",
+                        "featured_reward": {
+                            "name": "自选4阶技能碎片",
+                            "amount": 180,
+                            "status": "confirmed",
+                        },
+                    }
+                ],
+            }
+        }
+    }
+
+    overview = build_secret_treasure_overview(
+        timeline, today=date(2026, 6, 26), open_date=date(2026, 6, 19)
+    )
+
+    text = format_secret_treasure_overview(overview)
+
+    assert "重点奖励：自选4阶技能碎片 ×180" in text
+
+
+def test_secret_treasure_explicit_pending_reward_is_not_guessed() -> None:
+    timeline = {
+        "activity_rules": {
+            "secret_treasure_battle": {
+                "first_server_day": 8,
+                "period_days": 7,
+                "known_phases": [
+                    {
+                        "phase": 1,
+                        "server_day": 8,
+                        "status": "confirmed",
+                        "featured_reward": {
+                            "name": "测试服奖励",
+                            "status": "pending",
+                        },
+                    }
+                ],
+            }
+        }
+    }
+
+    overview = build_secret_treasure_overview(
+        timeline, today=date(2026, 6, 26), open_date=date(2026, 6, 19)
+    )
+
+    assert overview.current_phase is not None
+    assert overview.current_phase.reward_mode == "unavailable"
+    text = format_secret_treasure_overview(overview)
+    assert "重点奖励：暂未获得可靠确认。" in text
+    assert "测试服奖励" not in text
+
+
+def test_secret_treasure_phase17_uses_fallback_category_only() -> None:
+    overview = _real_secret_treasure(today=date(2026, 11, 7))
+
+    # Day 142：第 20 期开启日（Day 8 + 19×7 = 141 是第 20 期；Day 142 时当前期 20）
+    assert overview.current_phase is not None
+    assert overview.current_phase.phase >= 17
+    assert overview.current_phase.reward_mode == "rule_fallback"
+
+    text = format_secret_treasure_overview(overview)
+    assert "重点奖励类别：" in text
+    assert "具体奖励：当前仅确认类别规律，以当期正式信息为准。" in text
+
+
+def test_secret_treasure_phase17_explicit_overrides_fallback() -> None:
+    timeline = load_timeline("timeline_v1.json")
+    # 注入第 17 期显式数据，验证 explicit > fallback。
+    rule = timeline["activity_rules"]["secret_treasure_battle"]
+    rule["known_phases"].append(
+        {
+            "phase": 17,
+            "server_day": 120,
+            "name": "秘宝大作战·第17期",
+            "status": "confirmed",
+            "featured_reward": {
+                "name": "全新确认大奖",
+                "status": "confirmed",
+            },
+        }
+    )
+
+    overview = build_secret_treasure_overview(
+        timeline, today=date(2026, 10, 16), open_date=date(2026, 6, 19)
+    )
+
+    # Day 120：第 17 期今天开启 → 属于 current。
+    assert overview.current_phase is not None
+    assert overview.current_phase.phase == 17
+    assert overview.current_phase.reward_mode == "explicit"
+    assert overview.next_phase is not None
+    assert overview.next_phase.phase == 18
+    assert overview.next_phase.reward_mode == "rule_fallback"
+
+
+def test_secret_treasure_malformed_rule_returns_unavailable_safely() -> None:
+    timeline = {
+        "activity_rules": {
+            "secret_treasure_battle": {
+                "first_server_day": None,
+                "period_days": 0,
+            }
+        }
+    }
+
+    overview = build_secret_treasure_overview(
+        timeline, today=date(2026, 9, 14), open_date=date(2026, 6, 19)
+    )
+
+    assert overview.current_phase is None
+    assert overview.next_phase is None
+    text = format_secret_treasure_overview(overview)
+    assert "暂无可确定的下一期。" in text
+
+
+def test_secret_treasure_relative_labels_cover_recent_and_upcoming() -> None:
+    overview = _real_secret_treasure(today=date(2026, 9, 18))
+
+    text = format_secret_treasure_overview(overview)
+
+    assert "（今天）" in text
+    assert "（7 天后）" in text

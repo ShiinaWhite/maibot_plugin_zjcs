@@ -60,6 +60,33 @@ class ServerProgress:
     next_node: ScheduleEntry | None
 
 
+REWARD_MODE_EXPLICIT = "explicit"
+REWARD_MODE_RULE_FALLBACK = "rule_fallback"
+REWARD_MODE_UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True)
+class SecretTreasurePhase:
+    """秘宝单期信息；reward_mode 明确区分奖励可信度来源。"""
+
+    phase: int
+    server_day: int
+    event_date: date
+    name: str
+    payload: Mapping[str, Any]
+    reward_mode: str
+
+
+@dataclass(frozen=True)
+class SecretTreasureOverview:
+    """秘宝大作战查询结果：当前期（最近已开启）与下一期。"""
+
+    today: date
+    current_server_day: int
+    current_phase: SecretTreasurePhase | None
+    next_phase: SecretTreasurePhase | None
+
+
 @dataclass(frozen=True)
 class ReminderPolicy:
     """每类内容提前提醒的天数；0 表示关闭该类别提醒。"""
@@ -752,6 +779,163 @@ def format_server_progress(progress: ServerProgress) -> str:
             ]
         )
     return "\n".join(lines)
+
+
+def build_secret_treasure_overview(
+    timeline: Mapping[str, Any],
+    *,
+    today: date,
+    open_date: date,
+) -> SecretTreasureOverview:
+    """查询秘宝当前期（最近已开启）与下一期；与提醒提前天数无关。"""
+
+    current_server_day = calculate_server_day(today, open_date)
+    if current_server_day < 1:
+        return SecretTreasureOverview(
+            today=today,
+            current_server_day=current_server_day,
+            current_phase=None,
+            next_phase=None,
+        )
+
+    inputs = _secret_treasure_rule_inputs(timeline)
+    if inputs is None:
+        return SecretTreasureOverview(
+            today=today,
+            current_server_day=current_server_day,
+            current_phase=None,
+            next_phase=None,
+        )
+    first_server_day, period_days, explicit_phases, fallback_categories = inputs
+
+    def phase_server_day(phase_number: int) -> int:
+        explicit = explicit_phases.get(phase_number)
+        if explicit is not None:
+            override = _positive_int(explicit.get("server_day"))
+            if override is not None:
+                return override
+        return first_server_day + (phase_number - 1) * period_days
+
+    # 候选期 = 覆盖到当前天数之后的公式期次 ∪ 全部显式期次；
+    # 显式 server_day override 天然参与排序，保证 explicit 优先于公式。
+    formula_next_n = max(1, (current_server_day - first_server_day) // period_days + 2)
+    candidate_numbers = set(range(1, formula_next_n + 1)) | set(explicit_phases)
+
+    phases: list[SecretTreasurePhase] = [
+        _secret_treasure_phase(
+            phase_number,
+            phase_server_day(phase_number),
+            explicit_phases,
+            fallback_categories,
+            open_date,
+        )
+        for phase_number in sorted(candidate_numbers)
+    ]
+    phases.sort(key=lambda item: (item.server_day, item.phase))
+
+    reached = [item for item in phases if item.server_day <= current_server_day]
+    upcoming = [item for item in phases if item.server_day > current_server_day]
+    current_phase = reached[-1] if reached else None
+    next_phase = upcoming[0] if upcoming else None
+
+    return SecretTreasureOverview(
+        today=today,
+        current_server_day=current_server_day,
+        current_phase=current_phase,
+        next_phase=next_phase,
+    )
+
+
+def _secret_treasure_phase(
+    phase_number: int,
+    server_day: int,
+    explicit_phases: Mapping[int, Mapping[str, Any]],
+    fallback_categories: tuple[str, ...],
+    open_date: date,
+) -> SecretTreasurePhase:
+    explicit = explicit_phases.get(phase_number)
+    built = _secret_treasure_name_and_payload(
+        phase_number, explicit, fallback_categories
+    )
+    if explicit is not None and built is not None:
+        reward_mode = REWARD_MODE_EXPLICIT
+    elif built is not None:
+        reward_mode = REWARD_MODE_RULE_FALLBACK
+    else:
+        reward_mode = REWARD_MODE_UNAVAILABLE
+
+    if built is not None:
+        name, payload = built
+    else:
+        name = f"秘宝大作战·第{phase_number}期"
+        payload = {"phase": phase_number}
+        if isinstance(explicit, Mapping):
+            explicit_name = explicit.get("name")
+            if isinstance(explicit_name, str) and explicit_name:
+                name = explicit_name
+
+    return SecretTreasurePhase(
+        phase=phase_number,
+        server_day=server_day,
+        event_date=open_date + timedelta(days=server_day - 1),
+        name=name,
+        payload=payload,
+        reward_mode=reward_mode,
+    )
+
+
+def format_secret_treasure_overview(overview: SecretTreasureOverview) -> str:
+    title = "【杖剑助手 · 秘宝大作战】"
+    if overview.current_server_day < 1:
+        return (
+            f"{title}\n\n"
+            "当前状态：服务器尚未开服。\n\n"
+            "秘宝大作战将在服务器开服后按时间线周期计算。"
+        )
+
+    lines: list[str] = []
+    for label, phase in (
+        ("当前期（最近已开启）", overview.current_phase),
+        ("下一期", overview.next_phase),
+    ):
+        lines.extend(["", f"{label}："])
+        if phase is None:
+            if label.startswith("当前"):
+                lines.append("尚未开始")
+            else:
+                lines.append("暂无可确定的下一期。")
+            continue
+
+        offset = (phase.event_date - overview.today).days
+        lines.append(phase.name)
+        lines.append(
+            f"开服第 {phase.server_day} 天 · "
+            f"{phase.event_date.isoformat()}（{_progress_relative_label(offset)}）"
+        )
+        lines.extend(_secret_treasure_reward_lines(phase))
+    return "\n".join([title] + lines)
+
+
+def _secret_treasure_reward_lines(phase: SecretTreasurePhase) -> list[str]:
+    if phase.reward_mode == REWARD_MODE_EXPLICIT:
+        reward = phase.payload.get("featured_reward")
+        if isinstance(reward, Mapping):
+            reward_name = reward.get("name")
+            if isinstance(reward_name, str) and reward_name:
+                amount = reward.get("amount")
+                reward_text = reward_name
+                if amount is not None:
+                    reward_text = f"{reward_text} ×{amount}"
+                return [f"重点奖励：{reward_text}"]
+        return ["重点奖励：暂未获得可靠确认。"]
+    if phase.reward_mode == REWARD_MODE_RULE_FALLBACK:
+        category = phase.payload.get("featured_reward_category")
+        if isinstance(category, str) and category:
+            return [
+                f"重点奖励类别：{category}",
+                "具体奖励：当前仅确认类别规律，以当期正式信息为准。",
+            ]
+    return ["重点奖励：暂未获得可靠确认。"]
 
 
 def _progress_relative_label(days_offset: int) -> str:
