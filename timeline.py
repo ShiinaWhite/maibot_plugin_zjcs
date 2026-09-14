@@ -13,6 +13,7 @@ NOTIFIABLE_STATUSES = frozenset(
     {"confirmed", "confirmed_partial", "confirmed_with_version_risk"}
 )
 _CATEGORY_ORDER = {"dungeon": 0, "activity": 1, "event": 2}
+SCHEDULE_HORIZON_DAYS = 14
 WEEKLY_ACTIVITY_POLICY_NAMES = {
     "宾果抽抽乐": "bingo",
     "幸运刮刮乐": "scratch",
@@ -29,6 +30,18 @@ class Reminder:
     event_date: date
     remind_days_before: int
     date_label: str
+    payload: Mapping[str, Any]
+    current_server_day: int | None
+
+
+@dataclass(frozen=True)
+class ScheduleEntry:
+    """近期日程查询条目：描述时间线上实际发生的内容，与提醒策略无关。"""
+
+    event_id: str
+    category: str
+    name: str
+    event_date: date
     payload: Mapping[str, Any]
     current_server_day: int | None
 
@@ -215,6 +228,108 @@ def build_reminders(
     )
 
 
+def build_upcoming_schedule(
+    timeline: Mapping[str, Any],
+    *,
+    today: date,
+    open_date: date | None,
+    season_anchor_dates: Mapping[str, date] | None = None,
+    horizon_days: int = SCHEDULE_HORIZON_DAYS,
+) -> list[ScheduleEntry]:
+    """汇总窗口内实际会发生的内容；只读查询，不依赖提醒提前天数。"""
+
+    if isinstance(horizon_days, bool) or not isinstance(horizon_days, int):
+        raise TypeError("horizon_days 必须是整数")
+    if horizon_days < 1:
+        raise ValueError("horizon_days 必须是大于等于 1 的整数")
+    anchors = season_anchor_dates or {}
+    current_server_day = (
+        calculate_server_day(today, open_date) if open_date is not None else None
+    )
+    end_date = today + timedelta(days=horizon_days - 1)
+    entries: list[ScheduleEntry] = []
+
+    for raw_dungeon in _mapping_list(timeline.get("dungeons")):
+        status = raw_dungeon.get("status")
+        if status not in NOTIFIABLE_STATUSES and status != "pending_formal_power":
+            continue
+        event_id = raw_dungeon.get("id")
+        name = raw_dungeon.get("name")
+        if not isinstance(event_id, str) or not event_id:
+            continue
+        if not isinstance(name, str) or not name:
+            continue
+        event_date = calculate_event_date(raw_dungeon, open_date, anchors)
+        if event_date is None or not today <= event_date <= end_date:
+            continue
+        entries.append(
+            ScheduleEntry(
+                event_id=event_id,
+                category="dungeon",
+                name=name,
+                event_date=event_date,
+                payload={
+                    "region": raw_dungeon.get("region"),
+                    "requirements": _confirmed_requirements(raw_dungeon),
+                    "status": status,
+                },
+                current_server_day=current_server_day,
+            )
+        )
+
+    for raw_event in _mapping_list(timeline.get("events")):
+        if raw_event.get("status") not in NOTIFIABLE_STATUSES:
+            continue
+        event_id = raw_event.get("id")
+        name = raw_event.get("name")
+        if not isinstance(event_id, str) or not event_id:
+            continue
+        if not isinstance(name, str) or not name:
+            continue
+        event_date = calculate_event_date(raw_event, open_date, anchors)
+        if event_date is None or not today <= event_date <= end_date:
+            continue
+        entries.append(
+            ScheduleEntry(
+                event_id=event_id,
+                category="event",
+                name=name,
+                event_date=event_date,
+                payload={
+                    "type": raw_event.get("type"),
+                    "status": raw_event.get("status"),
+                },
+                current_server_day=current_server_day,
+            )
+        )
+
+    entries.extend(
+        _schedule_secret_treasure(
+            timeline,
+            open_date=open_date,
+            current_server_day=current_server_day,
+            horizon_days=horizon_days,
+        )
+    )
+    entries.extend(
+        _schedule_weekly_activities(
+            timeline,
+            open_date=open_date,
+            current_server_day=current_server_day,
+            horizon_days=horizon_days,
+        )
+    )
+
+    return sorted(
+        entries,
+        key=lambda item: (
+            item.event_date,
+            _CATEGORY_ORDER.get(item.category, 99),
+            item.event_id,
+        ),
+    )
+
+
 def format_reminder(reminder: Reminder) -> str:
     remaining = reminder.remind_days_before
     if reminder.category == "dungeon":
@@ -319,6 +434,95 @@ def format_daily_reminders(
     return "\n".join(lines)
 
 
+def format_upcoming_schedule(
+    entries: Iterable[ScheduleEntry],
+    *,
+    today: date,
+    horizon_days: int = SCHEDULE_HORIZON_DAYS,
+) -> str:
+    ordered = sorted(
+        entries,
+        key=lambda item: (
+            item.event_date,
+            _CATEGORY_ORDER.get(item.category, 99),
+            item.event_id,
+        ),
+    )
+    end_date = today + timedelta(days=horizon_days - 1)
+    title = "【杖剑助手 · 近期日程】"
+    if not ordered:
+        return f"{title}\n\n未来 {horizon_days} 天没有已确认的日程内容。"
+
+    lines = [
+        title,
+        "",
+        f"未来 {horizon_days} 天 · {today.isoformat()} ～ {end_date.isoformat()}",
+    ]
+    current_date: date | None = None
+    for entry in ordered:
+        if entry.event_date != current_date:
+            days_until = (entry.event_date - today).days
+            lines.extend(
+                [
+                    "",
+                    f"{entry.event_date.isoformat()} · {_schedule_relative_label(days_until)}",
+                ]
+            )
+            current_date = entry.event_date
+        lines.extend(_schedule_entry_lines(entry))
+    return "\n".join(lines)
+
+
+def _schedule_relative_label(days_until: int) -> str:
+    if days_until == 0:
+        return "今天"
+    if days_until == 1:
+        return "明天"
+    if days_until == 2:
+        return "后天"
+    return f"{days_until} 天后"
+
+
+def _schedule_entry_lines(entry: ScheduleEntry) -> list[str]:
+    category_label = {
+        "dungeon": "副本",
+        "activity": "活动",
+        "event": "事件",
+    }.get(entry.category, "提醒")
+    if entry.category == "dungeon":
+        region = entry.payload.get("region")
+        name = (
+            f"{region} · {entry.name}"
+            if isinstance(region, str) and region
+            else entry.name
+        )
+        lines = [f"【{category_label}】{name}"]
+        requirements = entry.payload.get("requirements")
+        if isinstance(requirements, Mapping) and requirements:
+            lines.append("已确认准入战力：")
+            lines.extend(
+                f"{label}：{format_power(power)}"
+                for label, power in requirements.items()
+            )
+        return lines
+
+    lines = [f"【{category_label}】{entry.name}"]
+    reward = entry.payload.get("featured_reward")
+    if isinstance(reward, Mapping):
+        reward_name = reward.get("name")
+        if isinstance(reward_name, str) and reward_name:
+            amount = reward.get("amount")
+            reward_text = reward_name
+            if amount is not None:
+                reward_text = f"{reward_text} ×{amount}"
+            lines.append(f"重点奖励：{reward_text}")
+    else:
+        reward_category = entry.payload.get("featured_reward_category")
+        if isinstance(reward_category, str) and reward_category:
+            lines.append(f"重点奖励类别：{reward_category}")
+    return lines
+
+
 def format_relative_day(days: int) -> str:
     """把距今天数格式化为中文相对时间：今天/明天/后天/N天后。"""
 
@@ -351,6 +555,60 @@ def format_power(value: object) -> str:
     return _format_decimal(decimal_value)
 
 
+def _secret_treasure_rule_inputs(
+    timeline: Mapping[str, Any],
+) -> tuple[int, int, dict[int, Mapping[str, Any]], tuple[str, ...]] | None:
+    activity_rules = timeline.get("activity_rules")
+    if not isinstance(activity_rules, Mapping):
+        return None
+    rule = activity_rules.get("secret_treasure_battle")
+    if not isinstance(rule, Mapping):
+        return None
+
+    first_server_day = _positive_int(rule.get("first_server_day"))
+    period_days = _positive_int(rule.get("period_days"))
+    if first_server_day is None or period_days is None:
+        return None
+
+    explicit_phases = {
+        phase_number: phase
+        for phase in _mapping_list(rule.get("known_phases"))
+        if (phase_number := _positive_int(phase.get("phase"))) is not None
+    }
+    fallback_categories = _secret_treasure_fallback_categories(rule)
+    return first_server_day, period_days, explicit_phases, fallback_categories
+
+
+def _secret_treasure_name_and_payload(
+    phase_number: int,
+    phase: Mapping[str, Any] | None,
+    fallback_categories: tuple[str, ...],
+) -> tuple[str, dict[str, Any]] | None:
+    name = f"秘宝大作战·第{phase_number}期"
+    payload: dict[str, Any] = {"phase": phase_number}
+
+    if phase is not None:
+        phase_status = phase.get("status")
+        reward = phase.get("featured_reward")
+        if phase_status not in NOTIFIABLE_STATUSES or not isinstance(reward, Mapping):
+            return None
+        if reward.get("status") not in NOTIFIABLE_STATUSES:
+            return None
+        if not isinstance(reward.get("name"), str) or not reward["name"]:
+            return None
+        phase_name = phase.get("name")
+        if isinstance(phase_name, str) and phase_name:
+            name = phase_name
+        payload["featured_reward"] = dict(reward)
+    elif phase_number > 16 and fallback_categories:
+        payload["featured_reward_category"] = fallback_categories[
+            (phase_number - 1) % len(fallback_categories)
+        ]
+    else:
+        return None
+    return name, payload
+
+
 def _build_secret_treasure_reminders(
     timeline: Mapping[str, Any],
     *,
@@ -361,24 +619,10 @@ def _build_secret_treasure_reminders(
     if open_date is None or current_server_day is None or remind_day <= 0:
         return []
 
-    activity_rules = timeline.get("activity_rules")
-    if not isinstance(activity_rules, Mapping):
+    inputs = _secret_treasure_rule_inputs(timeline)
+    if inputs is None:
         return []
-    rule = activity_rules.get("secret_treasure_battle")
-    if not isinstance(rule, Mapping):
-        return []
-
-    first_server_day = _positive_int(rule.get("first_server_day"))
-    period_days = _positive_int(rule.get("period_days"))
-    if first_server_day is None or period_days is None:
-        return []
-
-    explicit_phases = {
-        phase_number: phase
-        for phase in _mapping_list(rule.get("known_phases"))
-        if (phase_number := _positive_int(phase.get("phase"))) is not None
-    }
-    fallback_categories = _secret_treasure_fallback_categories(rule)
+    first_server_day, period_days, explicit_phases, fallback_categories = inputs
 
     target_server_day = current_server_day + remind_day
     phase_number, phase = _secret_treasure_phase_for_server_day(
@@ -389,28 +633,10 @@ def _build_secret_treasure_reminders(
     )
     if phase_number is None:
         return []
-    name = f"秘宝大作战·第{phase_number}期"
-    payload: dict[str, Any] = {"phase": phase_number}
-
-    if phase is not None:
-        phase_status = phase.get("status")
-        reward = phase.get("featured_reward")
-        if phase_status not in NOTIFIABLE_STATUSES or not isinstance(reward, Mapping):
-            return []
-        if reward.get("status") not in NOTIFIABLE_STATUSES:
-            return []
-        if not isinstance(reward.get("name"), str) or not reward["name"]:
-            return []
-        phase_name = phase.get("name")
-        if isinstance(phase_name, str) and phase_name:
-            name = phase_name
-        payload["featured_reward"] = dict(reward)
-    elif phase_number > 16 and fallback_categories:
-        payload["featured_reward_category"] = fallback_categories[
-            (phase_number - 1) % len(fallback_categories)
-        ]
-    else:
+    built = _secret_treasure_name_and_payload(phase_number, phase, fallback_categories)
+    if built is None:
         return []
+    name, payload = built
 
     return [
         Reminder(
@@ -437,6 +663,24 @@ def _secret_treasure_fallback_categories(
     return tuple(_string_list(post_phase_rule.get("pattern_categories")))
 
 
+def _weekly_rotation_rule_inputs(
+    timeline: Mapping[str, Any],
+) -> tuple[int, int, list[str]] | None:
+    activity_rules = timeline.get("activity_rules")
+    if not isinstance(activity_rules, Mapping):
+        return None
+    rule = activity_rules.get("weekly_side_activity_rotation")
+    if not isinstance(rule, Mapping):
+        return None
+
+    first_server_day = _positive_int(rule.get("first_server_day"))
+    period_days = _positive_int(rule.get("period_days"))
+    rotation = _string_list(rule.get("rotation"))
+    if first_server_day is None or period_days is None or not rotation:
+        return None
+    return first_server_day, period_days, rotation
+
+
 def _build_weekly_activity_reminders(
     timeline: Mapping[str, Any],
     *,
@@ -448,18 +692,10 @@ def _build_weekly_activity_reminders(
     if open_date is None or current_server_day is None:
         return []
 
-    activity_rules = timeline.get("activity_rules")
-    if not isinstance(activity_rules, Mapping):
+    inputs = _weekly_rotation_rule_inputs(timeline)
+    if inputs is None:
         return []
-    rule = activity_rules.get("weekly_side_activity_rotation")
-    if not isinstance(rule, Mapping):
-        return []
-
-    first_server_day = _positive_int(rule.get("first_server_day"))
-    period_days = _positive_int(rule.get("period_days"))
-    rotation = _string_list(rule.get("rotation"))
-    if first_server_day is None or period_days is None or not rotation:
-        return []
+    first_server_day, period_days, rotation = inputs
 
     reminders: list[Reminder] = []
     candidate_days = sorted(
@@ -497,6 +733,87 @@ def _build_weekly_activity_reminders(
             )
         )
     return reminders
+
+
+def _schedule_secret_treasure(
+    timeline: Mapping[str, Any],
+    *,
+    open_date: date | None,
+    current_server_day: int | None,
+    horizon_days: int,
+) -> list[ScheduleEntry]:
+    if open_date is None or current_server_day is None:
+        return []
+    inputs = _secret_treasure_rule_inputs(timeline)
+    if inputs is None:
+        return []
+    first_server_day, period_days, explicit_phases, fallback_categories = inputs
+
+    entries: list[ScheduleEntry] = []
+    for offset in range(horizon_days):
+        target_server_day = current_server_day + offset
+        phase_number, phase = _secret_treasure_phase_for_server_day(
+            explicit_phases,
+            target_server_day=target_server_day,
+            first_server_day=first_server_day,
+            period_days=period_days,
+        )
+        if phase_number is None:
+            continue
+        built = _secret_treasure_name_and_payload(
+            phase_number, phase, fallback_categories
+        )
+        if built is None:
+            continue
+        name, payload = built
+        entries.append(
+            ScheduleEntry(
+                event_id=f"secret_treasure_{phase_number}",
+                category="activity",
+                name=name,
+                event_date=open_date + timedelta(days=target_server_day - 1),
+                payload=payload,
+                current_server_day=current_server_day,
+            )
+        )
+    return entries
+
+
+def _schedule_weekly_activities(
+    timeline: Mapping[str, Any],
+    *,
+    open_date: date | None,
+    current_server_day: int | None,
+    horizon_days: int,
+) -> list[ScheduleEntry]:
+    if open_date is None or current_server_day is None:
+        return []
+    inputs = _weekly_rotation_rule_inputs(timeline)
+    if inputs is None:
+        return []
+    first_server_day, period_days, rotation = inputs
+
+    entries: list[ScheduleEntry] = []
+    for offset in range(horizon_days):
+        target_server_day = current_server_day + offset
+        if target_server_day < first_server_day:
+            continue
+        if (target_server_day - first_server_day) % period_days != 0:
+            continue
+        rotation_index = ((target_server_day - first_server_day) // period_days) % len(
+            rotation
+        )
+        entries.append(
+            ScheduleEntry(
+                event_id=f"weekly_side_activity_{target_server_day}",
+                category="activity",
+                name=rotation[rotation_index],
+                event_date=open_date + timedelta(days=target_server_day - 1),
+                payload={"type": "weekly_side_activity"},
+                current_server_day=current_server_day,
+            )
+        )
+    return entries
 
 
 def _build_reminder(

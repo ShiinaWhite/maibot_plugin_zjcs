@@ -26,5 +26,5 @@ def test_manifest_declares_project_author(manifest) -> None:
     }
 
 
-def test_manifest_version_is_bumped_for_feiren_zai_timeline_event(manifest) -> None:
-    assert manifest["version"] == "0.1.5"
+def test_manifest_version_is_bumped_for_upcoming_schedule_command(manifest) -> None:
+    assert manifest["version"] == "0.1.6"

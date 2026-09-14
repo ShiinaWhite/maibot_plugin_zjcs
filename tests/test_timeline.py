@@ -5,12 +5,15 @@ import pytest
 from timeline import (
     Reminder,
     ReminderPolicy,
+    ScheduleEntry,
     build_reminders,
+    build_upcoming_schedule,
     calculate_event_date,
     format_power,
     format_daily_reminders,
     format_relative_day,
     format_reminder,
+    format_upcoming_schedule,
     load_timeline,
     make_notification_key,
     validate_remind_day,
@@ -995,3 +998,362 @@ def test_weekly_activity_zero_policy_skips_that_activity() -> None:
     assert [reminder.name for reminder in reminders] == ["幸运刮刮乐"]
     assert reminders[0].remind_days_before == 2
     assert reminders[0].event_date == date(2026, 1, 22)
+
+
+def _real_schedule(*, today: date, open_date: date | None) -> list[ScheduleEntry]:
+    timeline = load_timeline("timeline_v1.json")
+    return build_upcoming_schedule(timeline, today=today, open_date=open_date)
+
+
+def test_schedule_window_covers_today_through_today_plus_13() -> None:
+    timeline = {
+        "events": [
+            {
+                "id": "before_window",
+                "type": "collaboration",
+                "event_date": "2026-09-13",
+                "name": "窗口前",
+                "status": "confirmed",
+            },
+            {
+                "id": "first_day",
+                "type": "collaboration",
+                "event_date": "2026-09-14",
+                "name": "窗口首日",
+                "status": "confirmed",
+            },
+            {
+                "id": "last_day",
+                "type": "collaboration",
+                "event_date": "2026-09-27",
+                "name": "窗口末日",
+                "status": "confirmed",
+            },
+            {
+                "id": "beyond_window",
+                "type": "collaboration",
+                "event_date": "2026-09-28",
+                "name": "窗口外",
+                "status": "confirmed",
+            },
+        ]
+    }
+
+    entries = build_upcoming_schedule(timeline, today=date(2026, 9, 14), open_date=None)
+
+    assert [entry.event_id for entry in entries] == ["first_day", "last_day"]
+
+
+def test_schedule_rejects_invalid_horizon() -> None:
+    timeline = load_timeline("timeline_v1.json")
+    for horizon, expected_error in (
+        (True, TypeError),
+        (1.5, TypeError),
+        (0, ValueError),
+        (-1, ValueError),
+    ):
+        with pytest.raises(expected_error):
+            build_upcoming_schedule(
+                timeline,
+                today=date(2026, 9, 14),
+                open_date=date(2026, 6, 19),
+                horizon_days=horizon,
+            )
+
+
+def test_schedule_feiren_zai_appears_regardless_of_open_date() -> None:
+    for open_date in (date(2026, 6, 19), date(2026, 7, 1)):
+        entries = _real_schedule(today=date(2026, 9, 14), open_date=open_date)
+        feiren = [
+            entry for entry in entries if entry.event_id == "feiren_zai_collaboration"
+        ]
+        assert len(feiren) == 1
+        assert feiren[0].category == "event"
+        assert feiren[0].event_date == date(2026, 9, 24)
+
+
+def test_schedule_covers_server_day_content_from_real_timeline() -> None:
+    entries = _real_schedule(today=date(2026, 9, 14), open_date=date(2026, 6, 19))
+
+    by_date: dict[date, list[ScheduleEntry]] = {}
+    for entry in entries:
+        by_date.setdefault(entry.event_date, []).append(entry)
+
+    day_92 = by_date[date(2026, 9, 18)]
+    names_day_92 = {entry.name for entry in day_92}
+    assert "新幻兽：竹林仙君" in names_day_92
+    assert "秘宝大作战·第13期" in names_day_92
+    assert "菲涅克的谜题" in names_day_92
+    treasure_13 = next(entry for entry in day_92 if entry.name == "秘宝大作战·第13期")
+    assert (
+        treasure_13.payload["featured_reward"]["name"]
+        == "自选奇迹遗物箱·龙Ⅱ（道衍天机）"
+    )
+
+    day_98 = by_date[date(2026, 9, 24)]
+    assert any(entry.name == "非人哉联动" for entry in day_98)
+
+    day_99 = by_date[date(2026, 9, 25)]
+    names_day_99 = {entry.name for entry in day_99}
+    assert "秘宝大作战·第14期" in names_day_99
+    assert "宾果抽抽乐" in names_day_99
+    ark = next(
+        entry
+        for entry in day_99
+        if entry.category == "dungeon" and entry.name == "仙海云舟"
+    )
+    assert ark.payload["region"] == "龙之国"
+    assert ark.payload["requirements"]
+
+
+def test_schedule_ignores_reminder_policy() -> None:
+    timeline = load_timeline("timeline_v1.json")
+
+    schedule_entries = build_upcoming_schedule(
+        timeline, today=date(2026, 9, 14), open_date=date(2026, 6, 19)
+    )
+    zero_policy = ReminderPolicy(
+        dungeon=0, secret_treasure=0, bingo=0, scratch=0, fenek=0, event=0
+    )
+    reminders_with_zero_policy = build_reminders(
+        timeline,
+        today=date(2026, 9, 14),
+        open_date=date(2026, 6, 19),
+        reminder_policy=zero_policy,
+    )
+
+    assert schedule_entries
+    assert reminders_with_zero_policy == []
+
+
+def test_schedule_season_day_requires_anchor() -> None:
+    timeline = {
+        "dungeons": [
+            {
+                "id": "s4_first",
+                "region": "哈帕迪",
+                "name": "奇巧钟楼",
+                "season": "S4",
+                "season_day": 1,
+                "status": "confirmed",
+            },
+            {
+                "id": "s6_first",
+                "region": "艾珀希",
+                "name": "飓风之柱",
+                "season": "S6",
+                "season_day": 1,
+                "status": "confirmed",
+            },
+        ]
+    }
+
+    entries = build_upcoming_schedule(
+        timeline,
+        today=date(2026, 11, 1),
+        open_date=date(2026, 6, 19),
+        season_anchor_dates={"S4": date(2026, 11, 1)},
+    )
+
+    assert [entry.event_id for entry in entries] == ["s4_first"]
+
+
+def test_schedule_dungeon_pending_power_lists_no_requirements() -> None:
+    timeline = {
+        "dungeons": [
+            {
+                "id": "tide_temple",
+                "region": "艾珀希",
+                "name": "潮汐灵殿",
+                "season": "S6",
+                "season_day": 14,
+                "status": "pending_formal_power",
+                "requirements": None,
+            }
+        ]
+    }
+
+    entries = build_upcoming_schedule(
+        timeline,
+        today=date(2026, 11, 14),
+        open_date=date(2026, 6, 19),
+        season_anchor_dates={"S6": date(2026, 11, 1)},
+    )
+
+    assert len(entries) == 1
+    assert entries[0].payload["requirements"] == {}
+    text = format_upcoming_schedule(entries, today=date(2026, 11, 14))
+    assert "【副本】艾珀希 · 潮汐灵殿" in text
+    assert "已确认准入战力" not in text
+
+
+def test_schedule_skips_unconfirmed_statuses() -> None:
+    timeline = {
+        "dungeons": [
+            {
+                "id": "predicted_dungeon",
+                "name": "预测副本",
+                "server_day": 15,
+                "status": "predicted",
+            }
+        ],
+        "events": [
+            {
+                "id": "pending_event",
+                "type": "collaboration",
+                "event_date": "2026-09-20",
+                "name": "待确认联动",
+                "status": "pending_formal_power",
+            },
+            {
+                "id": "confirmed_event",
+                "type": "collaboration",
+                "event_date": "2026-09-21",
+                "name": "已确认联动",
+                "status": "confirmed",
+            },
+        ],
+    }
+
+    entries = build_upcoming_schedule(
+        timeline, today=date(2026, 9, 14), open_date=date(2026, 6, 19)
+    )
+
+    assert [entry.event_id for entry in entries] == ["confirmed_event"]
+
+
+def test_schedule_format_merges_same_date_and_sorts_by_category() -> None:
+    entries = [
+        ScheduleEntry(
+            event_id="z_event",
+            category="event",
+            name="事件乙",
+            event_date=date(2026, 9, 18),
+            payload={},
+            current_server_day=92,
+        ),
+        ScheduleEntry(
+            event_id="a_activity",
+            category="activity",
+            name="活动甲",
+            event_date=date(2026, 9, 18),
+            payload={},
+            current_server_day=92,
+        ),
+        ScheduleEntry(
+            event_id="d_dungeon",
+            category="dungeon",
+            name="副本丙",
+            event_date=date(2026, 9, 18),
+            payload={"region": "龙之国", "requirements": {"普通": 6_200_000}},
+            current_server_day=92,
+        ),
+        ScheduleEntry(
+            event_id="later_event",
+            category="event",
+            name="后续事件",
+            event_date=date(2026, 9, 24),
+            payload={},
+            current_server_day=92,
+        ),
+    ]
+
+    text = format_upcoming_schedule(entries, today=date(2026, 9, 14))
+
+    assert "【杖剑助手 · 近期日程】" in text
+    assert "未来 14 天 · 2026-09-14 ～ 2026-09-27" in text
+    assert "2026-09-18 · 4 天后" in text
+    assert "2026-09-24 · 10 天后" in text
+    assert text.count("2026-09-18") == 1
+    dungeon_index = text.index("【副本】龙之国 · 副本丙")
+    activity_index = text.index("【活动】活动甲")
+    event_index = text.index("【事件】事件乙")
+    assert dungeon_index < activity_index < event_index
+    assert "已确认准入战力：" in text
+    assert "普通：620万" in text
+
+
+def test_schedule_labels_today_tomorrow_and_day_after() -> None:
+    entries = [
+        ScheduleEntry(
+            event_id="today_event",
+            category="event",
+            name="今日事件",
+            event_date=date(2026, 9, 14),
+            payload={},
+            current_server_day=None,
+        ),
+        ScheduleEntry(
+            event_id="tomorrow_event",
+            category="event",
+            name="明日事件",
+            event_date=date(2026, 9, 15),
+            payload={},
+            current_server_day=None,
+        ),
+        ScheduleEntry(
+            event_id="day_after_event",
+            category="event",
+            name="后天事件",
+            event_date=date(2026, 9, 16),
+            payload={},
+            current_server_day=None,
+        ),
+    ]
+
+    text = format_upcoming_schedule(entries, today=date(2026, 9, 14))
+
+    assert "2026-09-14 · 今天" in text
+    assert "2026-09-15 · 明天" in text
+    assert "2026-09-16 · 后天" in text
+
+
+def test_schedule_empty_result_uses_chinese_notice() -> None:
+    entries = build_upcoming_schedule(
+        {}, today=date(2026, 9, 14), open_date=date(2026, 6, 19)
+    )
+
+    assert entries == []
+    assert (
+        format_upcoming_schedule(entries, today=date(2026, 9, 14))
+        == "【杖剑助手 · 近期日程】\n\n未来 14 天没有已确认的日程内容。"
+    )
+
+
+def test_schedule_order_is_stable_regardless_of_input_order() -> None:
+    entries_forward = [
+        ScheduleEntry(
+            event_id="alpha",
+            category="event",
+            name="甲",
+            event_date=date(2026, 9, 18),
+            payload={},
+            current_server_day=92,
+        ),
+        ScheduleEntry(
+            event_id="beta",
+            category="event",
+            name="乙",
+            event_date=date(2026, 9, 20),
+            payload={},
+            current_server_day=92,
+        ),
+    ]
+    entries_reversed = list(reversed(entries_forward))
+
+    text_forward = format_upcoming_schedule(entries_forward, today=date(2026, 9, 14))
+    text_reversed = format_upcoming_schedule(entries_reversed, today=date(2026, 9, 14))
+
+    assert text_forward == text_reversed
+    assert text_forward.index("甲") < text_forward.index("乙")
+
+
+def test_real_schedule_format_matches_expected_layout() -> None:
+    entries = _real_schedule(today=date(2026, 9, 14), open_date=date(2026, 6, 19))
+
+    text = format_upcoming_schedule(entries, today=date(2026, 9, 14))
+
+    assert "未来 14 天 · 2026-09-14 ～ 2026-09-27" in text
+    assert "【事件】非人哉联动" in text
+    assert "重点奖励：自选奇迹遗物箱·龙Ⅱ（道衍天机）" in text
+    assert "【副本】龙之国 · 仙海云舟" in text

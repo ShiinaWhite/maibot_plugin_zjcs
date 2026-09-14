@@ -17,8 +17,10 @@ try:
     from .state import NotificationState, StateFileError
     from .timeline import (
         build_reminders,
+        build_upcoming_schedule,
         calculate_server_day,
         format_daily_reminders,
+        format_upcoming_schedule,
         load_timeline,
         make_notification_key,
         parse_iso_date,
@@ -30,8 +32,10 @@ except ImportError:
     from state import NotificationState, StateFileError
     from timeline import (
         build_reminders,
+        build_upcoming_schedule,
         calculate_server_day,
         format_daily_reminders,
+        format_upcoming_schedule,
         load_timeline,
         make_notification_key,
         parse_iso_date,
@@ -58,10 +62,13 @@ COMMAND_HELP_MESSAGE = """【杖剑助手 · 指令帮助】
 /杖剑传说 预览
 查看今天按当前配置会生成的提醒，不影响提醒状态。
 
+/杖剑传说 日程
+查看未来 14 天已确认的副本、活动和重要事件，不影响提醒状态。
+
 /杖剑传说 测试
 在当前 QQ 群发送一条链路测试消息。
 
-缩写：/zjcs 预览、/zjcs 测试；发送 /杖剑传说 或 /zjcs 可随时查看本帮助。"""
+缩写：/zjcs 预览、/zjcs 日程、/zjcs 测试；发送 /杖剑传说 或 /zjcs 可随时查看本帮助。"""
 TEST_MESSAGE = """【杖剑助手 · 测试消息】
 
 如果你看到这条消息，说明插件到 QQ 群的发送链路正常。
@@ -366,7 +373,7 @@ class ZjcsGuildNotifier(MaiBotPlugin):
 
     @Command(
         "zjcs_command",
-        description="杖剑助手指令入口：帮助、预览、测试。",
+        description="杖剑助手指令入口：帮助、预览、日程、测试。",
         pattern=COMMAND_PATTERN,
     )
     async def handle_zjcs_command(
@@ -388,6 +395,8 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             subcommand = str(matched_groups.get("sub") or "").strip()
         if subcommand == "预览":
             return await self._run_preview(stream_id)
+        if subcommand == "日程":
+            return await self._run_schedule(stream_id)
         if subcommand == "测试":
             return await self._run_test_send(stream_id, group_id, platform)
         # 帮助、无参数与未知子命令统一返回帮助。
@@ -460,6 +469,20 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             succeeded,
             "今日提醒预览已生成" if succeeded else "今日提醒预览发送失败",
             True,
+        )
+
+    async def _run_schedule(self, stream_id: str):
+        if not stream_id:
+            return False, "缺少命令来源 stream_id", True
+        try:
+            timezone, _ = self._validated_schedule()
+            today = datetime.now(timezone).date()
+            message = self._build_configured_schedule(today=today)
+        except (OSError, TypeError, ValueError, RuntimeError) as exc:
+            self._logger.error("近期日程查询失败：%s", exc)
+            return False, "近期日程查询失败", True
+        return await self._reply_text_to_stream(
+            stream_id, message, "近期日程已发送", "近期日程发送失败"
         )
 
     async def _run_test_send(self, stream_id: str, group_id: str, platform: str):
@@ -615,7 +638,7 @@ class ZjcsGuildNotifier(MaiBotPlugin):
                 group_id,
             )
 
-    def _build_configured_reminders(self, *, today: date) -> tuple[list[Reminder], int]:
+    def _configured_timeline_dates(self) -> tuple[date, dict[str, date]]:
         config = self.config
         if not config.server.open_date.strip():
             raise ValueError("开服日期不能为空")
@@ -630,6 +653,11 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             }.items()
             if anchor.strip()
         }
+        return open_date, season_anchor_dates
+
+    def _build_configured_reminders(self, *, today: date) -> tuple[list[Reminder], int]:
+        config = self.config
+        open_date, season_anchor_dates = self._configured_timeline_dates()
         reminder_policy = ReminderPolicy(
             dungeon=validate_remind_day(
                 config.reminders.dungeon_remind_day, "dungeon_remind_day"
@@ -660,6 +688,16 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             reminder_policy=reminder_policy,
         )
         return reminders, current_server_day
+
+    def _build_configured_schedule(self, *, today: date) -> str:
+        open_date, season_anchor_dates = self._configured_timeline_dates()
+        entries = build_upcoming_schedule(
+            load_timeline(TIMELINE_PATH),
+            today=today,
+            open_date=open_date,
+            season_anchor_dates=season_anchor_dates,
+        )
+        return format_upcoming_schedule(entries, today=today)
 
     async def _send_text_with_retry(self, message: str, group_id: str) -> bool:
         """有限重试一条消息，并在每次 retry 前重新解析目标群 stream。"""
