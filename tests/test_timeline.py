@@ -2306,3 +2306,50 @@ def test_secret_treasure_high_phase_override_beats_formula_next() -> None:
     assert "下一期：" in text
     assert "秘宝大作战·第10期" in text
     assert "开服第 20 天 · 2026-07-08（4 天后）" in text
+
+
+def test_secret_treasure_high_phase_explicit_on_today_becomes_current() -> None:
+    # 高期号 explicit 恰好是 today：该期属于 current，next 为之后最早 occurrence。
+    overview = _overview_with_explicit_phases(
+        [
+            {
+                "phase": 10,
+                "server_day": 16,
+                "name": "秘宝大作战·第10期",
+                "status": "confirmed",
+                "featured_reward": {"name": "确认大奖", "status": "confirmed"},
+            }
+        ],
+        today=date(2026, 7, 4),
+    )
+
+    assert overview.current_phase is not None
+    assert overview.current_phase.phase == 10
+    assert overview.current_phase.server_day == 16
+    assert overview.next_phase is not None
+    assert overview.next_phase.phase == 3
+    assert overview.next_phase.server_day == 22
+
+
+def test_secret_treasure_high_phase_explicit_moved_into_past() -> None:
+    # 高期号 explicit 被提前到过去：current 按 (server_day, phase) 排序后的
+    # 最后一个 <= current 决定，不按 phase number 决定。
+    overview = _overview_with_explicit_phases(
+        [
+            {
+                "phase": 10,
+                "server_day": 14,
+                "name": "秘宝大作战·第10期",
+                "status": "confirmed",
+                "featured_reward": {"name": "确认大奖", "status": "confirmed"},
+            }
+        ],
+        today=date(2026, 7, 4),
+    )
+
+    assert overview.current_phase is not None
+    assert overview.current_phase.phase == 2
+    assert overview.current_phase.server_day == 15
+    assert overview.next_phase is not None
+    assert overview.next_phase.phase == 3
+    assert overview.next_phase.server_day == 22
