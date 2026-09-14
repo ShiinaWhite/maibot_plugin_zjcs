@@ -325,7 +325,9 @@ def test_season_day_uses_configured_anchor_when_server_day_is_absent() -> None:
     assert "当前服务器进度" not in format_reminder(reminders[0])
 
 
-def test_later_season_anchor_takes_priority_over_observed_server_day() -> None:
+def test_season_day_with_server_day_is_ambiguous_and_fail_closed() -> None:
+    # 0.1.11 起：server_day 与 season_day 混写属于日期模型歧义，
+    # calculate_event_date 不再按优先级替数据作者做决定。
     event = {
         "season": "S4",
         "season_day": 3,
@@ -333,14 +335,17 @@ def test_later_season_anchor_takes_priority_over_observed_server_day() -> None:
         "name": "S4 测试事件",
     }
 
-    assert calculate_event_date(
-        event,
-        date(2026, 1, 1),
-        {"S4": date(2026, 2, 1)},
-    ) == date(2026, 2, 3)
+    assert (
+        calculate_event_date(
+            event,
+            date(2026, 1, 1),
+            {"S4": date(2026, 2, 1)},
+        )
+        is None
+    )
 
 
-def test_later_season_requires_anchor_even_when_server_day_exists() -> None:
+def test_ambiguous_season_day_item_is_skipped_by_reminders() -> None:
     event = {
         "id": "s4_without_anchor",
         "season": "S4",
@@ -350,6 +355,7 @@ def test_later_season_requires_anchor_even_when_server_day_exists() -> None:
         "status": "confirmed",
     }
 
+    # season_day + server_day 混写 → 歧义 fail closed：不计算日期也不提醒。
     assert calculate_event_date(event, date(2026, 1, 1), {}) is None
     assert (
         build_reminders(
@@ -421,10 +427,11 @@ def test_feiren_zai_absolute_date_is_independent_of_open_date() -> None:
     assert calculate_event_date(event, None, {}) == date(2026, 9, 24)
 
 
-def test_explicit_event_date_takes_priority_over_server_day() -> None:
+def test_event_date_with_server_day_is_ambiguous_and_fail_closed() -> None:
+    # 0.1.11 起：event_date 与 server_day 混写属于日期模型歧义，fail closed。
     item = {"event_date": "2026-09-24", "server_day": 1}
 
-    assert calculate_event_date(item, date(2026, 1, 1), {}) == date(2026, 9, 24)
+    assert calculate_event_date(item, date(2026, 1, 1), {}) is None
 
 
 def test_invalid_event_date_is_skipped() -> None:

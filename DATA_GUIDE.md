@@ -102,6 +102,19 @@ event_date = YYYY-MM-DD
 
 这类事件不得换算成某个服务器的 `server_day` 再写成全局规则；`server_day` 只表示真正随服务器开服进度变化的内容。
 
+## 时间线数据不变量 / Integrity Contract
+
+`timeline_v1.json` 由仓库测试 `audit_timeline_integrity()` 在发布前自动审计，以下不变量必须成立：
+
+1. dungeon / event 的日期模型三选一：`event_date`（绝对日历）、`server_day`（服务器进度）、`season + season_day`（赛季进度）；
+2. `event_date` / `server_day` / `season_day` 不得混写；混写即歧义，运行时 fail closed（该条目被跳过，不猜测）；
+3. `event_date` 必须是合法 `YYYY-MM-DD`；`server_day` / `season_day` 必须是正整数；
+4. `season` 单独出现只是元数据，可与 `server_day` 共存；
+5. dungeon / event 的 `id` 全局唯一，且不得使用系统保留前缀（`secret_treasure_`、`weekly_side_activity_`）；
+6. 引用的 source key 必须已在 `sources` registry 注册；
+7. 秘宝 `known_phases` 的 phase 号唯一，显式 `server_day`（override）不得重复；
+8. 显式 `server_day` 是 override，优先于公式；歧义数据运行时不猜。
+
 ## 副本战力
 
 副本的 `requirements` 是动态难度映射，例如：

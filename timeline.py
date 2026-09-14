@@ -28,6 +28,10 @@ WEEKLY_ACTIVITY_PRE_OPEN_MESSAGE = (
     "当前状态：服务器尚未开服。\n\n"
     "每周活动将在服务器开服后按时间线周期计算。"
 )
+RESERVED_GENERATED_ID_PREFIXES = (
+    "secret_treasure_",
+    "weekly_side_activity_",
+)
 
 
 @dataclass(frozen=True)
@@ -152,44 +156,59 @@ def calculate_server_day(today: date, open_date: date) -> int:
     return (today - open_date).days + 1
 
 
+def _timeline_date_model(item: Mapping[str, Any]) -> str | None:
+    """识别条目唯一的日期模型：event_date / server_day / season_day。
+
+    允许 0 个或多个日期载体共存时返回 None（fail closed）；
+    season 字段本身是元数据，可与 server_day 合法共存。
+    """
+
+    carriers: list[str] = []
+    event_date = item.get("event_date")
+    if event_date is not None:
+        if isinstance(event_date, str) and event_date:
+            try:
+                date.fromisoformat(event_date)
+            except ValueError:
+                return None
+            carriers.append("event_date")
+        else:
+            return None
+    if _positive_int(item.get("server_day")) is not None:
+        carriers.append("server_day")
+    season = item.get("season")
+    if (
+        _positive_int(item.get("season_day")) is not None
+        and isinstance(season, str)
+        and season
+    ):
+        carriers.append("season_day")
+    if len(carriers) != 1:
+        return None
+    return carriers[0]
+
+
 def calculate_event_date(
     item: Mapping[str, Any],
     open_date: date | None,
     season_anchor_dates: Mapping[str, date],
 ) -> date | None:
-    explicit_date = item.get("event_date")
-    if explicit_date is not None:
-        if isinstance(explicit_date, date):
-            return explicit_date
-        if isinstance(explicit_date, str) and explicit_date:
-            try:
-                return date.fromisoformat(explicit_date)
-            except ValueError:
-                return None
-        return None
+    """按条目唯一的日期模型计算日期；歧义或非法数据一律不可计算。"""
 
-    season_day = _positive_int(item.get("season_day"))
-    season = item.get("season")
-    anchor_date = (
-        season_anchor_dates.get(season)
-        if isinstance(season, str) and _is_later_season(season)
-        else None
-    )
-    if season_day is not None and isinstance(season, str) and _is_later_season(season):
-        if anchor_date is None:
+    model = _timeline_date_model(item)
+    if model is None:
+        return None
+    if model == "event_date":
+        return date.fromisoformat(item["event_date"])
+    if model == "server_day":
+        if open_date is None:
             return None
-        return anchor_date + timedelta(days=season_day - 1)
-
-    server_day = _positive_int(item.get("server_day"))
-    if server_day is not None and open_date is not None:
-        return open_date + timedelta(days=server_day - 1)
-
-    if season_day is None or not isinstance(season, str):
+        return open_date + timedelta(days=item["server_day"] - 1)
+    season = item["season"]
+    anchor = season_anchor_dates.get(season)
+    if anchor is None:
         return None
-    anchor_date = season_anchor_dates.get(season)
-    if anchor_date is None:
-        return None
-    return anchor_date + timedelta(days=season_day - 1)
+    return anchor + timedelta(days=item["season_day"] - 1)
 
 
 def build_reminders(
@@ -695,23 +714,17 @@ def _progression_node_entry(
     anchors: Mapping[str, date],
     current_server_day: int | None,
 ) -> ScheduleEntry | None:
-    """进度节点仅限 server_day 或 season+season_day 驱动的事件，绝对日历事件不算。"""
+    """进度节点仅限服务器/赛季进度模型的事件，绝对日历事件不算。"""
 
     if raw_event.get("status") not in NOTIFIABLE_STATUSES:
+        return None
+    if _timeline_date_model(raw_event) not in ("server_day", "season_day"):
         return None
     event_id = raw_event.get("id")
     name = raw_event.get("name")
     if not isinstance(event_id, str) or not event_id:
         return None
     if not isinstance(name, str) or not name:
-        return None
-    has_server_day = _positive_int(raw_event.get("server_day")) is not None
-    season = raw_event.get("season")
-    season_day = _positive_int(raw_event.get("season_day"))
-    has_season_progression = (
-        isinstance(season, str) and bool(season) and season_day is not None
-    )
-    if not has_server_day and not has_season_progression:
         return None
     event_date = calculate_event_date(raw_event, open_date, anchors)
     if event_date is None:
@@ -860,10 +873,9 @@ def _secret_treasure_occurrence_days(
     """生成期次→开服日映射；显式 server_day override 优先于公式。
 
     全部显式期次先进入候选集；公式期次按期号递增生成。由于公式开服日
-    随期号严格递增，一旦越过 max(through_server_day, 已找到的最早未来
-    显式期次)，剩余未覆盖期次不可能成为 current/next，可安全停止。
-    显式 override 允许打破“期号顺序 == 时间顺序”，因此高期号的显式
-    期次也可能早于低期号的公式期次，必须全量参与排序。
+    随期号严格递增，遇到第一个未被显式覆盖且越过 through_server_day 的
+    公式期次后，剩余未覆盖期次必然更晚，不可能改变 current/next，
+    可安全停止；显式期次已在第 1 步全量进入候选集，不依赖扫描顺序。
     """
 
     occurrence_days: dict[int, int] = {}
@@ -874,16 +886,12 @@ def _secret_treasure_occurrence_days(
         if override is not None:
             occurrence_days[phase_number] = override
 
-    barrier = through_server_day
-    for day in occurrence_days.values():
-        barrier = max(barrier, day)
-
     phase_number = 1
     while True:
         if phase_number not in occurrence_days:
             formula_day = first_server_day + (phase_number - 1) * period_days
             occurrence_days[phase_number] = formula_day
-            if formula_day > barrier:
+            if formula_day > through_server_day:
                 return occurrence_days
         phase_number += 1
 
@@ -912,6 +920,9 @@ def find_next_weekly_activity(
         return None
     first_server_day, period_days, rotation = inputs
     current_server_day = calculate_server_day(today, open_date)
+    if current_server_day < 1:
+        # 未开服：fail closed，避免生成带负数进度语义的条目。
+        return None
 
     if current_server_day <= first_server_day:
         target_server_day = first_server_day
@@ -1585,3 +1596,199 @@ def _format_decimal(value: Decimal, suffix: str = "") -> str:
     if value == value.to_integral_value():
         return f"{value.quantize(Decimal(1))}{suffix}"
     return f"{value.normalize():f}{suffix}"
+
+
+def audit_timeline_integrity(timeline: Mapping[str, Any]) -> list[str]:
+    """静态审计时间线数据一致性；返回确定顺序的 issue 描述列表。
+
+    用途是仓库测试门与人工 review，不在运行时暴露为用户命令。
+    """
+
+    issues: list[str] = []
+    registry = timeline.get("sources")
+    registered_source_keys: set[str] = set()
+    if registry is not None and not isinstance(registry, Mapping):
+        issues.append("sources: source registry 必须是对象")
+    elif isinstance(registry, Mapping):
+        for key, value in registry.items():
+            if not isinstance(key, str) or not key:
+                issues.append("sources: 存在无效的 source key")
+                continue
+            registered_source_keys.add(key)
+            if not isinstance(value, Mapping):
+                issues.append(f"sources.{key}: source 条目必须是对象")
+
+    seen_ids: dict[str, str] = {}
+    for kind in ("dungeons", "events"):
+        raw_items = timeline.get(kind)
+        if raw_items is not None and not isinstance(raw_items, list):
+            issues.append(f"{kind}: 必须是数组")
+            continue
+        for index, item in enumerate(raw_items or []):
+            _audit_timeline_item(
+                kind, index, item, registered_source_keys, seen_ids, issues
+            )
+
+    _audit_secret_treasure_rule(timeline, registered_source_keys, issues)
+    _audit_weekly_rotation_rule(timeline, registered_source_keys, issues)
+    return sorted(issues)
+
+
+def _audit_timeline_item(
+    kind: str,
+    index: int,
+    item: object,
+    registered_source_keys: set[str],
+    seen_ids: dict[str, str],
+    issues: list[str],
+) -> None:
+    label = f"{kind}[{index}]"
+    if not isinstance(item, Mapping):
+        issues.append(f"{label}: 条目必须是对象")
+        return
+
+    item_id = item.get("id")
+    if not isinstance(item_id, str) or not item_id:
+        issues.append(f"{label}: id 必须是非空字符串")
+    else:
+        if item_id.startswith(RESERVED_GENERATED_ID_PREFIXES):
+            issues.append(f"{label}: id {item_id} 使用了系统保留前缀")
+        previous = seen_ids.get(item_id)
+        if previous is not None:
+            issues.append(f"{label}: id {item_id} 与 {previous} 重复")
+        else:
+            seen_ids[item_id] = label
+
+    name = item.get("name")
+    if not isinstance(name, str) or not name:
+        issues.append(f"{label}: name 必须是非空字符串")
+
+    status = item.get("status")
+    if not isinstance(status, str) or not status:
+        issues.append(f"{label}: status 必须是非空字符串")
+
+    if _timeline_date_model(item) is None:
+        issues.append(f"{label}: 日期模型缺失、非法或歧义")
+
+    _audit_source_references(label, item, registered_source_keys, issues)
+
+
+def _audit_source_references(
+    label: str,
+    holder: Mapping[str, Any],
+    registered_source_keys: set[str],
+    issues: list[str],
+) -> None:
+    raw_sources = holder.get("sources")
+    if raw_sources is None:
+        return
+    if not isinstance(raw_sources, list):
+        issues.append(f"{label}: sources 必须是字符串数组")
+        return
+    for key in raw_sources:
+        if not isinstance(key, str) or not key:
+            issues.append(f"{label}: sources 存在无效 key")
+        elif key not in registered_source_keys:
+            issues.append(f"{label}: sources 引用未注册的 source key {key}")
+
+
+def _audit_secret_treasure_rule(
+    timeline: Mapping[str, Any],
+    registered_source_keys: set[str],
+    issues: list[str],
+) -> None:
+    activity_rules = timeline.get("activity_rules")
+    if not isinstance(activity_rules, Mapping):
+        return
+    rule = activity_rules.get("secret_treasure_battle")
+    if not isinstance(rule, Mapping):
+        return
+    label = "activity_rules.secret_treasure_battle"
+    _audit_source_references(label, rule, registered_source_keys, issues)
+
+    if _positive_int(rule.get("first_server_day")) is None:
+        issues.append(f"{label}: first_server_day 必须是正整数")
+    if _positive_int(rule.get("period_days")) is None:
+        issues.append(f"{label}: period_days 必须是正整数")
+
+    raw_phases = rule.get("known_phases")
+    if raw_phases is not None and not isinstance(raw_phases, list):
+        issues.append(f"{label}.known_phases: 必须是数组")
+        raw_phases = None
+
+    seen_phases: dict[int, str] = {}
+    seen_override_days: dict[int, str] = {}
+    for index, phase in enumerate(raw_phases or []):
+        phase_label = f"{label}.known_phases[{index}]"
+        if not isinstance(phase, Mapping):
+            issues.append(f"{phase_label}: 条目必须是对象")
+            continue
+        _audit_source_references(phase_label, phase, registered_source_keys, issues)
+
+        number = _positive_int(phase.get("phase"))
+        if number is None:
+            issues.append(f"{phase_label}: phase 必须是正整数")
+        elif number in seen_phases:
+            issues.append(
+                f"{phase_label}: phase {number} 与 {seen_phases[number]} 重复"
+            )
+        else:
+            seen_phases[number] = phase_label
+
+        override_day = _positive_int(phase.get("server_day"))
+        if override_day is None:
+            continue
+        if override_day in seen_override_days:
+            issues.append(
+                f"{phase_label}: 显式 server_day {override_day} "
+                f"与 {seen_override_days[override_day]} 重复"
+            )
+        else:
+            seen_override_days[override_day] = phase_label
+
+        phase_status = phase.get("status")
+        reward = phase.get("featured_reward")
+        if (
+            isinstance(phase_status, str)
+            and phase_status in NOTIFIABLE_STATUSES
+            and isinstance(reward, Mapping)
+            and isinstance(reward.get("status"), str)
+            and reward["status"] in NOTIFIABLE_STATUSES
+        ):
+            reward_name = reward.get("name")
+            if not isinstance(reward_name, str) or not reward_name:
+                issues.append(
+                    f"{phase_label}: 可通知状态下的 featured_reward.name "
+                    "必须是非空字符串"
+                )
+
+    post_rule = rule.get("post_phase_16_rule")
+    if (
+        isinstance(post_rule, Mapping)
+        and post_rule.get("status") == "rule_confirmed_reward_detail_dynamic"
+        and not _string_list(post_rule.get("pattern_categories"))
+    ):
+        issues.append(
+            f"{label}.post_phase_16_rule: pattern_categories 至少需要一个非空字符串"
+        )
+
+
+def _audit_weekly_rotation_rule(
+    timeline: Mapping[str, Any],
+    registered_source_keys: set[str],
+    issues: list[str],
+) -> None:
+    activity_rules = timeline.get("activity_rules")
+    if not isinstance(activity_rules, Mapping):
+        return
+    rule = activity_rules.get("weekly_side_activity_rotation")
+    if not isinstance(rule, Mapping):
+        return
+    label = "activity_rules.weekly_side_activity_rotation"
+    _audit_source_references(label, rule, registered_source_keys, issues)
+    if _positive_int(rule.get("first_server_day")) is None:
+        issues.append(f"{label}: first_server_day 必须是正整数")
+    if _positive_int(rule.get("period_days")) is None:
+        issues.append(f"{label}: period_days 必须是正整数")
+    if not _string_list(rule.get("rotation")):
+        issues.append(f"{label}: rotation 必须是至少一个非空字符串的数组")
