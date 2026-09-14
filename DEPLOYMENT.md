@@ -101,3 +101,45 @@ timeline_v1.json
 - 回滚 = 将 live plugin dir 恢复为旧 commit 文件 + 恢复兼容的 config/state，然后只 recreate Core；
 - 若版本变化改变了持久化数据，仅切回旧文件不算完整回滚，必须恢复数据兼容状态；
 - 不操作 NapCat，除非事故与 NapCat 本身有关且获得单独授权。
+
+## 0.1.5 → 0.1.12 Release Candidate 升级说明
+
+以下为 0.1.12 候选的部署与回滚预案；正式部署前 0.1.12 必须已通过外部部署候选 Review。
+
+### 关键事实
+
+- source production：commit `f3ca28f...`，plugin `0.1.5`
+- target：外部 Review 通过后的 0.1.12 commit，plugin `0.1.12`
+- config：`1.4.0` → `1.4.0`，无 config migration
+- state：`2` → `2`，无 state migration
+- 发布仍必须同步全部 5 个文件（`_manifest.json`、`plugin.py`、`state.py`、`timeline.py`、`timeline_v1.json`），即使某文件相对旧生产没有变化，也按完整 release set 发布并逐 blob 校验。
+
+### 部署前
+
+1. 确认最终 0.1.12 commit 已通过外部 Review；
+2. 记录 production 当前 commit / plugin / config / state；
+3. 备份 live `config.toml`、`notification_state.json`、`compose.yaml` 并记录 hash；
+4. 使用 `git cat-file blob` 导出 5 个发布文件，本地 `git hash-object --no-filters` 校验，服务器 staging 再校验，建 release/runtime 归档，同步 live（不碰 `config.toml`），live 再做 blob equality；
+5. 不要使用 `git archive` 作为生产字节事实源。
+
+### 部署执行
+
+`docker compose config -q` 通过后仅 recreate Core（`docker compose up -d --no-deps --force-recreate core`）；不要 compose down、不要 restart/recreate NapCat、不要 build/pull、不要改网络/数据库/其他插件/.Core source。部署窗口避开每日 09:00（Asia/Shanghai）正式提醒检查前后（建议避开 08:55 ～ 09:10），减少部署重启与正常提醒同时发生导致验收难以归因。
+
+### 部署后技术验收
+
+Core healthy；Extension Runner healthy；`zjcs.guild-notifier` 加载成功且 failures == 0；plugin version == 0.1.12；live 5 files 与最终 reviewed commit blob byte-equal；`config_version == 1.4.0`；`admin_qqs`、target groups、`open_date`、reminders（尤其 dungeon=2）未变；state version == 2；历史 sent keys 完整。若部署窗口没有合法提醒触发：config 与 state hash 应前后相同；若恰逢合法提醒时间：不能仅凭 state hash 变化判定失败，需按实际新增 key 与真实提醒对应。
+
+### 应用级 dry-run 验收
+
+使用本地 / release code test harness 做 date-injected dry-run（today = 2026-09-22），验证非人哉只生成一次理论 reminder（event_date 2026-09-24、lead 2、key `feiren_zai_collaboration:2026-09-24:2`）。dry-run 不得写 production state、不得发送真实 QQ、不得为验收伪造生产日期或改 production state。
+
+### 生产 QQ 验收
+
+候选阶段不发送 QQ。正式部署后由管理员在真实 QQ 当前群人工执行 `/杖剑传说` 确认帮助包含预览/日程/副本/进度/秘宝/活动/测试，并至少执行一个新增只读查询（如 `/杖剑传说 日程`）确认回复来源群、不跨群、不影响 state；其他查询按需抽查；`/杖剑传说 测试` 仅在操作者明确希望重新验证发送链路时执行，不作为部署脚本的一部分。
+
+### 回滚预案
+
+默认 rollback target：commit `f3ca28f...`（plugin 0.1.5），其 release 归档已保留。回滚代码 = 恢复 0.1.5 的完整 5 个发布文件 + 仅 recreate Core。
+
+**回滚时默认不恢复旧 config/state backup，只回滚代码、保留 live config 与 live state。** 原因：本次 0.1.5 与 0.1.12 的 config/state schema 完全一致，且若 0.1.12 运行期间已合法发送过提醒，恢复部署前旧 state 会删除新增 sent keys，导致回滚后重复发送。备份 config/state 仍必须保留，但只用于确认文件损坏、迁移异常或明确需要数据恢复的事故；确实需要恢复旧 state 时，必须先评估重复通知风险。

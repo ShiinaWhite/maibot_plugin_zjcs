@@ -98,7 +98,7 @@ COMMAND_HELP_MESSAGE = """【杖剑助手 · 指令帮助】
 /杖剑传说 测试
 在当前 QQ 群发送一条链路测试消息。
 
-缩写：/zjcs 预览、/zjcs 日程、/zjcs 副本、/zjcs 进度、/zjcs 秘宝、/zjcs 活动、/zjcs 测试；发送 /杖剑传说 或 /zjcs 可随时查看本帮助。"""
+缩写：/zjcs 帮助、/zjcs 预览、/zjcs 日程、/zjcs 副本、/zjcs 进度、/zjcs 秘宝、/zjcs 活动、/zjcs 测试。发送 /杖剑传说 或 /zjcs 可随时查看本帮助。"""
 TEST_MESSAGE = """【杖剑助手 · 测试消息】
 
 如果你看到这条消息，说明插件到 QQ 群的发送链路正常。

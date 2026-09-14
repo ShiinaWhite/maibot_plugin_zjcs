@@ -26,7 +26,5 @@ def test_manifest_declares_project_author(manifest) -> None:
     }
 
 
-def test_manifest_version_is_bumped_for_timeline_integrity_hardening(
-    manifest,
-) -> None:
-    assert manifest["version"] == "0.1.11"
+def test_manifest_version_is_bumped_for_release_candidate(manifest) -> None:
+    assert manifest["version"] == "0.1.12"
