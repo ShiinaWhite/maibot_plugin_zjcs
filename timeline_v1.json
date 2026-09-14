@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
   "dataset_name": "杖剑传说通知Bot V1 数据集",
-  "generated_on": "2026-09-02",
+  "generated_on": "2026-09-14",
   "scope": {
     "v1_features": [
       "按服务器/赛季进度提前 N 天通知副本开放",
@@ -723,6 +723,18 @@
       ]
     },
     {
+      "id": "feiren_zai_collaboration",
+      "type": "collaboration",
+      "server_day": 98,
+      "name": "非人哉联动",
+      "status": "confirmed",
+      "sources": [
+        "taptap_feirenzai_official",
+        "taptap_feirenzai_repost"
+      ],
+      "notes": "官方公告原文：「杖剑传说×非人哉联动将于9月24日正式开启，一群神仙即将抵达坎斯汀」。官方口径为绝对日期 2026-09-24；对 2026-06-19 开服的服务器即开服第 98 天。按 server_day 建模以复用通用事件提醒链路；这是日历限定联动而非赛季内容，因此不填 season。"
+    },
+    {
       "id": "season_s3_start",
       "type": "season",
       "season": "S3",
@@ -1216,6 +1228,18 @@
       "url": "https://www.taptap.cn/moment/843102224413363274",
       "kind": "taptap_recent",
       "notes": "用于确认S6已正式开启及飓风之柱困难约2.2亿；帖子注明部分内容源自先遣服，因此只采纳可交叉支持的字段。"
+    },
+    "taptap_feirenzai_official": {
+      "name": "官方 TapTap：杖剑传说×非人哉联动定档公告",
+      "url": "https://www.taptap.cn/app/717836/topic?type=official",
+      "kind": "official_taptap",
+      "notes": "官方公告确认联动将于9月24日正式开启；链接为官方公告列表页，未能固定单一公告 permalink。"
+    },
+    "taptap_feirenzai_repost": {
+      "name": "TapTap：联动非人哉定档资讯帖（玩家转载）",
+      "url": "https://www.taptap.cn/moment/844561211264598823",
+      "kind": "taptap_recent",
+      "notes": "玩家转载的定档资讯（9月24日开启），仅作官方公告之外的交叉验证，不作为独立事实来源。"
     }
   },
   "data_policy": {

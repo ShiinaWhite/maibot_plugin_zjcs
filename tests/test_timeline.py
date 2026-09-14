@@ -376,6 +376,92 @@ def test_actual_timeline_contains_expected_confirmed_entries() -> None:
     assert phase_11["featured_reward"]["name"] == "自选4阶技能碎片"
 
 
+def _feiren_zai_event() -> dict[str, object]:
+    timeline = load_timeline("timeline_v1.json")
+    return next(
+        item for item in timeline["events"] if item["id"] == "feiren_zai_collaboration"
+    )
+
+
+def test_feiren_zai_collaboration_data_uses_registered_sources() -> None:
+    timeline = load_timeline("timeline_v1.json")
+    event = _feiren_zai_event()
+
+    assert event["name"] == "非人哉联动"
+    assert event["type"] == "collaboration"
+    assert event["server_day"] == 98
+    assert event["status"] == "confirmed"
+
+    registered_sources = set(timeline["sources"])
+    assert set(event["sources"]) <= registered_sources
+    assert any(
+        timeline["sources"][key]["kind"] == "official_taptap"
+        for key in event["sources"]
+    )
+
+
+def test_feiren_zai_server_day_98_maps_to_official_date() -> None:
+    event = _feiren_zai_event()
+
+    assert calculate_event_date(event, date(2026, 6, 19), {}) == date(2026, 9, 24)
+
+
+def test_feiren_zai_collaboration_reminds_two_days_before() -> None:
+    timeline = load_timeline("timeline_v1.json")
+
+    reminders = build_reminders(
+        timeline,
+        today=date(2026, 9, 22),
+        open_date=date(2026, 6, 19),
+    )
+
+    matches = [
+        item for item in reminders if item.event_id == "feiren_zai_collaboration"
+    ]
+    assert len(matches) == 1
+    reminder = matches[0]
+    assert reminder.category == "event"
+    assert reminder.name == "非人哉联动"
+    assert reminder.event_date == date(2026, 9, 24)
+    assert reminder.remind_days_before == 2
+
+
+@pytest.mark.parametrize("today", [date(2026, 9, 21), date(2026, 9, 23)])
+def test_feiren_zai_collaboration_silent_outside_remind_day(today: date) -> None:
+    timeline = load_timeline("timeline_v1.json")
+
+    reminders = build_reminders(
+        timeline,
+        today=today,
+        open_date=date(2026, 6, 19),
+    )
+
+    assert all(item.event_id != "feiren_zai_collaboration" for item in reminders)
+
+
+def test_feiren_zai_collaboration_daily_message_groups_event_under_two_days_later() -> (
+    None
+):
+    timeline = load_timeline("timeline_v1.json")
+    reminders = build_reminders(
+        timeline,
+        today=date(2026, 9, 22),
+        open_date=date(2026, 6, 19),
+    )
+
+    text = format_daily_reminders(reminders, today=date(2026, 9, 22))
+
+    assert "2 天后 · 2026-09-24" in text
+    assert "【事件】非人哉联动" in text
+
+
+def test_feiren_zai_collaboration_notification_key_keeps_stable_format() -> None:
+    assert (
+        make_notification_key("feiren_zai_collaboration", date(2026, 9, 24), 2)
+        == "feiren_zai_collaboration:2026-09-24:2"
+    )
+
+
 def test_power_format_uses_readable_units() -> None:
     assert format_power(36_000) == "3.6万"
     assert format_power(100_000_000) == "1亿"
