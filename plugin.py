@@ -22,14 +22,17 @@ try:
         build_upcoming_schedule,
         calculate_server_day,
         find_next_dungeon,
+        find_next_weekly_activity,
         format_daily_reminders,
         format_next_dungeon,
+        format_next_weekly_activity,
         format_secret_treasure_overview,
         format_server_progress,
         format_upcoming_schedule,
         load_timeline,
         make_notification_key,
         parse_iso_date,
+        WEEKLY_ACTIVITY_PRE_OPEN_MESSAGE,
         Reminder,
         ReminderPolicy,
         validate_remind_day,
@@ -43,14 +46,17 @@ except ImportError:
         build_upcoming_schedule,
         calculate_server_day,
         find_next_dungeon,
+        find_next_weekly_activity,
         format_daily_reminders,
         format_next_dungeon,
+        format_next_weekly_activity,
         format_secret_treasure_overview,
         format_server_progress,
         format_upcoming_schedule,
         load_timeline,
         make_notification_key,
         parse_iso_date,
+        WEEKLY_ACTIVITY_PRE_OPEN_MESSAGE,
         Reminder,
         ReminderPolicy,
         validate_remind_day,
@@ -86,10 +92,13 @@ COMMAND_HELP_MESSAGE = """【杖剑助手 · 指令帮助】
 /杖剑传说 秘宝
 查看当前期和下一期秘宝的开启时间与重点奖励。
 
+/杖剑传说 活动
+查看下一项每周轮换活动的时间和准备建议。
+
 /杖剑传说 测试
 在当前 QQ 群发送一条链路测试消息。
 
-缩写：/zjcs 预览、/zjcs 日程、/zjcs 副本、/zjcs 进度、/zjcs 秘宝、/zjcs 测试；发送 /杖剑传说 或 /zjcs 可随时查看本帮助。"""
+缩写：/zjcs 预览、/zjcs 日程、/zjcs 副本、/zjcs 进度、/zjcs 秘宝、/zjcs 活动、/zjcs 测试；发送 /杖剑传说 或 /zjcs 可随时查看本帮助。"""
 TEST_MESSAGE = """【杖剑助手 · 测试消息】
 
 如果你看到这条消息，说明插件到 QQ 群的发送链路正常。
@@ -394,7 +403,7 @@ class ZjcsGuildNotifier(MaiBotPlugin):
 
     @Command(
         "zjcs_command",
-        description="杖剑助手指令入口：帮助、预览、日程、副本、进度、秘宝、测试。",
+        description="杖剑助手指令入口：帮助、预览、日程、副本、进度、秘宝、活动、测试。",
         pattern=COMMAND_PATTERN,
     )
     async def handle_zjcs_command(
@@ -424,6 +433,8 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             return await self._run_progress(stream_id)
         if subcommand == "秘宝":
             return await self._run_secret_treasure(stream_id)
+        if subcommand == "活动":
+            return await self._run_weekly_activity(stream_id)
         if subcommand == "测试":
             return await self._run_test_send(stream_id, group_id, platform)
         # 帮助、无参数与未知子命令统一返回帮助。
@@ -552,6 +563,20 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             return False, "秘宝查询失败", True
         return await self._reply_text_to_stream(
             stream_id, message, "秘宝查询已发送", "秘宝查询发送失败"
+        )
+
+    async def _run_weekly_activity(self, stream_id: str):
+        if not stream_id:
+            return False, "缺少命令来源 stream_id", True
+        try:
+            timezone, _ = self._validated_schedule()
+            today = datetime.now(timezone).date()
+            message = self._build_configured_weekly_activity(today=today)
+        except (OSError, TypeError, ValueError, RuntimeError) as exc:
+            self._logger.error("每周活动查询失败：%s", exc)
+            return False, "每周活动查询失败", True
+        return await self._reply_text_to_stream(
+            stream_id, message, "每周活动已发送", "每周活动发送失败"
         )
 
     async def _run_test_send(self, stream_id: str, group_id: str, platform: str):
@@ -796,6 +821,17 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             open_date=open_date,
         )
         return format_secret_treasure_overview(overview)
+
+    def _build_configured_weekly_activity(self, *, today: date) -> str:
+        open_date, _ = self._configured_timeline_dates()
+        if today < open_date:
+            return WEEKLY_ACTIVITY_PRE_OPEN_MESSAGE
+        entry = find_next_weekly_activity(
+            load_timeline(TIMELINE_PATH),
+            today=today,
+            open_date=open_date,
+        )
+        return format_next_weekly_activity(entry, today=today)
 
     async def _send_text_with_retry(self, message: str, group_id: str) -> bool:
         """有限重试一条消息，并在每次 retry 前重新解析目标群 stream。"""

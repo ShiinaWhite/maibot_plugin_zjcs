@@ -14,7 +14,9 @@ from timeline import (
     calculate_event_date,
     dungeon_prepare_date,
     find_next_dungeon,
+    find_next_weekly_activity,
     format_next_dungeon,
+    format_next_weekly_activity,
     format_power,
     format_server_progress,
     format_daily_reminders,
@@ -2353,3 +2355,117 @@ def test_secret_treasure_high_phase_explicit_moved_into_past() -> None:
     assert overview.next_phase is not None
     assert overview.next_phase.phase == 3
     assert overview.next_phase.server_day == 22
+
+
+def _next_weekly(*, today, open_date=date(2026, 6, 19), timeline=None):
+    if timeline is None:
+        timeline = load_timeline("timeline_v1.json")
+    return find_next_weekly_activity(timeline, today=today, open_date=open_date)
+
+
+def test_next_weekly_activity_real_day88_returns_fenek() -> None:
+    entry = _next_weekly(today=date(2026, 9, 14))
+
+    assert entry is not None
+    assert entry.name == "菲涅克的谜题"
+    assert entry.payload["server_day"] == 92
+    assert entry.event_date == date(2026, 9, 18)
+
+
+def test_next_weekly_activity_today_occurrence_is_inclusive() -> None:
+    entry = _next_weekly(today=date(2026, 9, 25))
+
+    assert entry is not None
+    assert entry.payload["server_day"] == 99
+    assert entry.name == "宾果抽抽乐"
+
+
+def test_next_weekly_activity_before_first_occurrence_returns_rotation_head() -> None:
+    entry = _next_weekly(today=date(2026, 6, 20))
+
+    assert entry is not None
+    assert entry.payload["server_day"] == 15
+    assert entry.name == "宾果抽抽乐"
+
+
+def test_next_weekly_activity_full_rotation_is_data_driven() -> None:
+    first = date(2026, 6, 19)
+    expected = {
+        15: "宾果抽抽乐",
+        22: "幸运刮刮乐",
+        29: "菲涅克的谜题",
+        36: "宾果抽抽乐",
+    }
+    for server_day, name in expected.items():
+        entry = _next_weekly(today=first + timedelta(days=server_day - 1))
+        assert entry is not None
+        assert entry.payload["server_day"] == server_day
+        assert entry.name == name
+
+
+def test_next_weekly_activity_supports_two_element_rotation() -> None:
+    timeline = {
+        "activity_rules": {
+            "weekly_side_activity_rotation": {
+                "first_server_day": 15,
+                "period_days": 7,
+                "rotation": ["活动A", "活动B"],
+            }
+        }
+    }
+    first = _next_weekly(today=date(2026, 7, 2), timeline=timeline)
+    second = _next_weekly(today=date(2026, 7, 9), timeline=timeline)
+
+    assert first is not None and first.name == "活动A"
+    assert second is not None and second.name == "活动B"
+
+
+def test_next_weekly_activity_malformed_rule_returns_none() -> None:
+    for rule in (
+        {"first_server_day": None, "period_days": 7, "rotation": ["宾果抽抽乐"]},
+        {"first_server_day": 15, "period_days": 0, "rotation": ["宾果抽抽乐"]},
+        {"first_server_day": 15, "period_days": 7, "rotation": []},
+    ):
+        timeline = {"activity_rules": {"weekly_side_activity_rotation": dict(rule)}}
+        assert (
+            find_next_weekly_activity(
+                timeline, today=date(2026, 9, 14), open_date=date(2026, 6, 19)
+            )
+            is None
+        )
+
+
+def test_format_next_weekly_activity_renders_fenek_details() -> None:
+    entry = _next_weekly(today=date(2026, 9, 14))
+
+    text = format_next_weekly_activity(entry, today=date(2026, 9, 14))
+
+    assert "【杖剑助手 · 下一个活动】" in text
+    assert "菲涅克的谜题" in text
+    assert "活动日期：2026-09-18" in text
+    assert "服务器进度：开服第 92 天" in text
+    assert "距离活动：4 天后" in text
+    assert "准备建议：当前时间线未记录固定准备建议。" in text
+
+
+def test_format_next_weekly_activity_bingo_uses_fixed_fruit_fact() -> None:
+    entry = _next_weekly(today=date(2026, 9, 25))
+
+    text = format_next_weekly_activity(entry, today=date(2026, 9, 25))
+
+    assert "准备建议：活动开始前至少留 20 个果子。" in text
+
+
+def test_format_next_weekly_activity_none_uses_empty_notice() -> None:
+    text = format_next_weekly_activity(None, today=date(2026, 9, 14))
+
+    assert text == (
+        "【杖剑助手 · 下一个活动】\n\n当前时间线中没有可确定日期的后续每周活动。"
+    )
+
+
+def test_bingo_min_fruit_count_is_single_source_of_truth() -> None:
+    from timeline import BINGO_MIN_FRUIT_COUNT, BINGO_PREPARATION_HINT
+
+    assert BINGO_MIN_FRUIT_COUNT == 20
+    assert "留20个" in BINGO_PREPARATION_HINT

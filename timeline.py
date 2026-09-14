@@ -19,7 +19,15 @@ WEEKLY_ACTIVITY_POLICY_NAMES = {
     "幸运刮刮乐": "scratch",
     "菲涅克的谜题": "fenek",
 }
-BINGO_PREPARATION_HINT = "准备建议：现在开始攒果子，活动开始前至少留20个。"
+BINGO_MIN_FRUIT_COUNT = 20
+BINGO_PREPARATION_HINT = (
+    f"准备建议：现在开始攒果子，活动开始前至少留{BINGO_MIN_FRUIT_COUNT}个。"
+)
+WEEKLY_ACTIVITY_PRE_OPEN_MESSAGE = (
+    "【杖剑助手 · 下一个活动】\n\n"
+    "当前状态：服务器尚未开服。\n\n"
+    "每周活动将在服务器开服后按时间线周期计算。"
+)
 
 
 @dataclass(frozen=True)
@@ -880,6 +888,86 @@ def _secret_treasure_occurrence_days(
         phase_number += 1
 
 
+def _weekly_rotation_name(
+    server_day: int,
+    first_server_day: int,
+    period_days: int,
+    rotation: list[str],
+) -> str:
+    """单一事实源：由开服日序换算轮换活动名。"""
+
+    return rotation[((server_day - first_server_day) // period_days) % len(rotation)]
+
+
+def find_next_weekly_activity(
+    timeline: Mapping[str, Any],
+    *,
+    today: date,
+    open_date: date,
+) -> ScheduleEntry | None:
+    """查询今天起（含今天）的下一项每周轮换活动；只读、与提醒策略无关。"""
+
+    inputs = _weekly_rotation_rule_inputs(timeline)
+    if inputs is None:
+        return None
+    first_server_day, period_days, rotation = inputs
+    current_server_day = calculate_server_day(today, open_date)
+
+    if current_server_day <= first_server_day:
+        target_server_day = first_server_day
+    else:
+        delta = current_server_day - first_server_day
+        if delta % period_days == 0:
+            target_server_day = current_server_day
+        else:
+            target_server_day = (
+                first_server_day
+                + ((delta + period_days - 1) // period_days) * period_days
+            )
+
+    return ScheduleEntry(
+        event_id=f"weekly_side_activity_{target_server_day}",
+        category="activity",
+        name=_weekly_rotation_name(
+            target_server_day, first_server_day, period_days, rotation
+        ),
+        event_date=open_date + timedelta(days=target_server_day - 1),
+        payload={"type": "weekly_side_activity", "server_day": target_server_day},
+        current_server_day=current_server_day,
+    )
+
+
+def format_next_weekly_activity(
+    entry: ScheduleEntry | None,
+    *,
+    today: date,
+) -> str:
+    title = "【杖剑助手 · 下一个活动】"
+    if entry is None:
+        return f"{title}\n\n当前时间线中没有可确定日期的后续每周活动。"
+
+    server_day = entry.payload.get("server_day")
+    server_day_text = (
+        f"开服第 {server_day} 天" if isinstance(server_day, int) else "开服第 ? 天"
+    )
+    lines = [
+        title,
+        "",
+        entry.name,
+        "",
+        f"活动日期：{entry.event_date.isoformat()}",
+        f"服务器进度：{server_day_text}",
+        f"距离活动：{_schedule_relative_label((entry.event_date - today).days)}",
+    ]
+    if entry.name == "宾果抽抽乐":
+        lines.extend(
+            ["", f"准备建议：活动开始前至少留 {BINGO_MIN_FRUIT_COUNT} 个果子。"]
+        )
+    else:
+        lines.extend(["", "准备建议：当前时间线未记录固定准备建议。"])
+    return "\n".join(lines)
+
+
 def _secret_treasure_phase(
     phase_number: int,
     server_day: int,
@@ -1224,10 +1312,9 @@ def _build_weekly_activity_reminders(
         if (target_server_day - first_server_day) % period_days != 0:
             continue
 
-        rotation_index = ((target_server_day - first_server_day) // period_days) % len(
-            rotation
+        activity_name = _weekly_rotation_name(
+            target_server_day, first_server_day, period_days, rotation
         )
-        activity_name = rotation[rotation_index]
         if reminder_policy.weekly_day(activity_name) != remind_days_before:
             continue
         event_date = open_date + timedelta(days=target_server_day - 1)
@@ -1311,14 +1398,13 @@ def _schedule_weekly_activities(
             continue
         if (target_server_day - first_server_day) % period_days != 0:
             continue
-        rotation_index = ((target_server_day - first_server_day) // period_days) % len(
-            rotation
-        )
         entries.append(
             ScheduleEntry(
                 event_id=f"weekly_side_activity_{target_server_day}",
                 category="activity",
-                name=rotation[rotation_index],
+                name=_weekly_rotation_name(
+                    target_server_day, first_server_day, period_days, rotation
+                ),
                 event_date=open_date + timedelta(days=target_server_day - 1),
                 payload={"type": "weekly_side_activity"},
                 current_server_day=current_server_day,
