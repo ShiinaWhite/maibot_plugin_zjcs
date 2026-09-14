@@ -1,4 +1,6 @@
-from timeline import audit_timeline_integrity, load_timeline
+from datetime import date
+
+from timeline import audit_timeline_integrity, calculate_event_date, load_timeline
 
 
 def _timeline_with_event(event: dict) -> dict:
@@ -308,3 +310,66 @@ def test_audit_detects_missing_name_and_status() -> None:
 
     assert any("name" in issue for issue in issues)
     assert any("status" in issue for issue in issues)
+
+
+def test_audit_flags_present_but_invalid_server_day() -> None:
+    for bad_server_day in ("92", 0, True):
+        event = {
+            "id": "mixed_invalid",
+            "name": "混写非法事件",
+            "event_date": "2026-09-24",
+            "status": "confirmed",
+            "server_day": bad_server_day,
+        }
+        timeline = _timeline_with_event(dict(event))
+
+        issues = audit_timeline_integrity(timeline)
+        assert issues, f"server_day={bad_server_day!r} 应产生 audit issue"
+        assert calculate_event_date(dict(event), date(2026, 6, 19), {}) is None, (
+            f"server_day={bad_server_day!r} 应 fail closed"
+        )
+
+
+def test_treasure_audit_flags_invalid_explicit_server_day() -> None:
+    for bad_server_day in ("92", 0, True):
+        timeline = {
+            "activity_rules": {
+                "secret_treasure_battle": {
+                    "first_server_day": 8,
+                    "period_days": 7,
+                    "known_phases": [
+                        {
+                            "phase": 1,
+                            "server_day": bad_server_day,
+                            "status": "confirmed",
+                        }
+                    ],
+                }
+            }
+        }
+
+        issues = audit_timeline_integrity(timeline)
+
+        assert any("server_day 如果存在必须是正整数" in issue for issue in issues), (
+            f"server_day={bad_server_day!r} 应产生 audit issue"
+        )
+
+
+def test_treasure_audit_allows_absent_explicit_server_day() -> None:
+    timeline = {
+        "activity_rules": {
+            "secret_treasure_battle": {
+                "first_server_day": 8,
+                "period_days": 7,
+                "known_phases": [
+                    {"phase": 1, "status": "confirmed"},
+                ],
+            }
+        }
+    }
+
+    treasure_issues = [
+        issue for issue in audit_timeline_integrity(timeline) if "server_day" in issue
+    ]
+
+    assert treasure_issues == []

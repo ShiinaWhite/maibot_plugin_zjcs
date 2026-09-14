@@ -159,13 +159,15 @@ def calculate_server_day(today: date, open_date: date) -> int:
 def _timeline_date_model(item: Mapping[str, Any]) -> str | None:
     """识别条目唯一的日期模型：event_date / server_day / season_day。
 
-    允许 0 个或多个日期载体共存时返回 None（fail closed）；
-    season 字段本身是元数据，可与 server_day 合法共存。
+    区分「字段缺失」与「字段存在但非法」：后者属于坏数据，立即 fail
+    closed 返回 None，而不是悄悄忽略后改用其他载体。允许 0 个或多个
+    合法载体共存时同样返回 None。season 字段本身是元数据，可与
+    server_day 合法共存。
     """
 
     carriers: list[str] = []
-    event_date = item.get("event_date")
-    if event_date is not None:
+    if "event_date" in item and item["event_date"] is not None:
+        event_date = item["event_date"]
         if isinstance(event_date, str) and event_date:
             try:
                 date.fromisoformat(event_date)
@@ -174,14 +176,16 @@ def _timeline_date_model(item: Mapping[str, Any]) -> str | None:
             carriers.append("event_date")
         else:
             return None
-    if _positive_int(item.get("server_day")) is not None:
+    if "server_day" in item and item["server_day"] is not None:
+        if _positive_int(item["server_day"]) is None:
+            return None
         carriers.append("server_day")
-    season = item.get("season")
-    if (
-        _positive_int(item.get("season_day")) is not None
-        and isinstance(season, str)
-        and season
-    ):
+    if "season_day" in item and item["season_day"] is not None:
+        season = item.get("season")
+        if _positive_int(item["season_day"]) is None:
+            return None
+        if not isinstance(season, str) or not season:
+            return None
         carriers.append("season_day")
     if len(carriers) != 1:
         return None
@@ -1735,8 +1739,11 @@ def _audit_secret_treasure_rule(
         else:
             seen_phases[number] = phase_label
 
+        if "server_day" not in phase:
+            continue
         override_day = _positive_int(phase.get("server_day"))
         if override_day is None:
+            issues.append(f"{phase_label}: server_day 如果存在必须是正整数")
             continue
         if override_day in seen_override_days:
             issues.append(
