@@ -7,12 +7,14 @@ from timeline import (
     ReminderPolicy,
     ScheduleEntry,
     build_reminders,
+    build_server_progress,
     build_upcoming_schedule,
     calculate_event_date,
     dungeon_prepare_date,
     find_next_dungeon,
     format_next_dungeon,
     format_power,
+    format_server_progress,
     format_daily_reminders,
     format_relative_day,
     format_reminder,
@@ -1628,3 +1630,313 @@ def test_format_next_dungeon_none_uses_empty_notice() -> None:
         format_next_dungeon(None, today=date(2026, 9, 14))
         == "【杖剑助手 · 下一个副本】\n\n当前时间线中没有可确定日期的后续副本。"
     )
+
+
+def _real_progress(*, today, open_date):
+    timeline = load_timeline("timeline_v1.json")
+    return build_server_progress(
+        timeline, today=today, open_date=open_date, season_anchor_dates={}
+    )
+
+
+def test_server_progress_real_day88_selects_s2_and_nodes() -> None:
+    progress = _real_progress(today=date(2026, 9, 14), open_date=date(2026, 6, 19))
+
+    assert progress.server_day == 88
+    assert progress.current_season == "S2"
+    assert progress.season_start_date == date(2026, 8, 4)
+    assert progress.season_day == 42
+    assert progress.recent_node is not None
+    assert progress.recent_node.name == "龙国第二期遗物：道衍天机"
+    assert progress.recent_node.event_date == date(2026, 9, 4)
+    assert progress.next_node is not None
+    assert progress.next_node.name == "新幻兽：竹林仙君"
+    assert progress.next_node.event_date == date(2026, 9, 18)
+    node_names = {progress.recent_node.name, progress.next_node.name}
+    assert "非人哉联动" not in node_names
+
+
+def test_server_progress_open_day_is_day_one() -> None:
+    progress = _real_progress(today=date(2026, 6, 19), open_date=date(2026, 6, 19))
+
+    assert progress.server_day == 1
+
+
+def test_server_progress_season_derived_from_timeline_not_hardcoded() -> None:
+    timeline = {
+        "events": [
+            {
+                "id": "season_s1_start",
+                "type": "season",
+                "season": "S1",
+                "server_day": 5,
+                "name": "S1 开启",
+                "status": "confirmed",
+            },
+            {
+                "id": "season_s2_start",
+                "type": "season",
+                "season": "S2",
+                "server_day": 20,
+                "name": "S2 开启",
+                "status": "confirmed",
+            },
+        ]
+    }
+
+    progress = build_server_progress(
+        timeline, today=date(2026, 6, 23), open_date=date(2026, 6, 19)
+    )
+
+    assert progress.current_season == "S1"
+    assert progress.season_start_date == date(2026, 6, 23)
+    assert progress.season_day == 1
+
+    progress_later = build_server_progress(
+        timeline, today=date(2026, 7, 8), open_date=date(2026, 6, 19)
+    )
+
+    assert progress_later.current_season == "S2"
+    assert progress_later.season_day == 1
+
+
+def test_server_progress_s4_selectable_with_anchor_only() -> None:
+    timeline = {
+        "events": [
+            {
+                "id": "season_s3_start",
+                "type": "season",
+                "season": "S3",
+                "server_day": 30,
+                "name": "S3 开启",
+                "status": "confirmed",
+            },
+            {
+                "id": "season_s4_start",
+                "type": "season",
+                "season": "S4",
+                "season_day": 1,
+                "name": "S4 开启",
+                "status": "confirmed",
+            },
+        ]
+    }
+
+    without_anchor = build_server_progress(
+        timeline,
+        today=date(2026, 12, 1),
+        open_date=date(2026, 6, 19),
+        season_anchor_dates={},
+    )
+    assert without_anchor.current_season == "S3"
+
+    with_anchor = build_server_progress(
+        timeline,
+        today=date(2026, 12, 1),
+        open_date=date(2026, 6, 19),
+        season_anchor_dates={"S4": date(2026, 11, 20)},
+    )
+    assert with_anchor.current_season == "S4"
+    assert with_anchor.season_start_date == date(2026, 11, 20)
+    assert with_anchor.season_day == 12
+
+
+def test_server_progress_before_first_season() -> None:
+    progress = _real_progress(today=date(2026, 6, 20), open_date=date(2026, 6, 19))
+
+    assert progress.current_season is None
+
+
+def test_server_progress_before_open_has_no_negative_day() -> None:
+    progress = _real_progress(today=date(2026, 6, 16), open_date=date(2026, 6, 19))
+
+    assert progress.server_day <= 0
+    text = format_server_progress(progress)
+    assert "当前状态：服务器尚未开服" in text
+    assert "距离开服：3 天后" in text
+    assert "开服第 -" not in text
+
+
+def test_server_progress_today_node_is_recent_not_next() -> None:
+    timeline = {
+        "events": [
+            {
+                "id": "aaa_node",
+                "type": "season_map",
+                "season": "S2",
+                "server_day": 88,
+                "name": "今日节点",
+                "status": "confirmed",
+            },
+            {
+                "id": "bbb_node",
+                "type": "phantom_beast",
+                "season": "S2",
+                "server_day": 92,
+                "name": "未来节点",
+                "status": "confirmed",
+            },
+        ]
+    }
+
+    progress = build_server_progress(
+        timeline, today=date(2026, 9, 14), open_date=date(2026, 6, 19)
+    )
+
+    assert progress.recent_node is not None
+    assert progress.recent_node.name == "今日节点"
+    assert progress.next_node is not None
+    assert progress.next_node.name == "未来节点"
+
+
+def test_server_progress_excludes_pending_and_absolute_events() -> None:
+    timeline = {
+        "events": [
+            {
+                "id": "pending_node",
+                "type": "season_map",
+                "season": "S2",
+                "server_day": 80,
+                "name": "待确认节点",
+                "status": "pending_formal_power",
+            },
+            {
+                "id": "feiren_zai_collaboration",
+                "type": "collaboration",
+                "event_date": "2026-09-24",
+                "name": "非人哉联动",
+                "status": "confirmed",
+            },
+        ]
+    }
+
+    progress = build_server_progress(
+        timeline, today=date(2026, 9, 14), open_date=date(2026, 6, 19)
+    )
+
+    assert progress.recent_node is None
+    assert progress.next_node is None
+
+
+def test_server_progress_season_day_event_becomes_node_with_anchor() -> None:
+    timeline = {
+        "events": [
+            {
+                "id": "s6_node",
+                "type": "season_map",
+                "season": "S6",
+                "season_day": 14,
+                "name": "S6 节点",
+                "status": "confirmed",
+            }
+        ]
+    }
+
+    progress = build_server_progress(
+        timeline,
+        today=date(2026, 11, 10),
+        open_date=date(2026, 6, 19),
+        season_anchor_dates={"S6": date(2026, 11, 1)},
+    )
+
+    assert progress.next_node is not None
+    assert progress.next_node.name == "S6 节点"
+    assert progress.next_node.event_date == date(2026, 11, 14)
+
+
+def test_server_progress_empty_nodes_render_placeholder_texts() -> None:
+    timeline = {
+        "events": [
+            {
+                "id": "feiren_zai_collaboration",
+                "type": "collaboration",
+                "event_date": "2026-09-24",
+                "name": "非人哉联动",
+                "status": "confirmed",
+            }
+        ]
+    }
+    progress = build_server_progress(
+        timeline, today=date(2026, 6, 20), open_date=date(2026, 6, 19)
+    )
+
+    text = format_server_progress(progress)
+
+    assert "最近关键节点：" in text
+    assert "暂无已到达的关键节点。" in text
+    assert "下一关键节点：" in text
+    assert "当前时间线中没有可确定日期的后续关键节点。" in text
+    assert "当前赛季：尚未进入 S1" in text
+
+
+def test_server_progress_format_real_day88_layout() -> None:
+    progress = _real_progress(today=date(2026, 9, 14), open_date=date(2026, 6, 19))
+
+    text = format_server_progress(progress)
+
+    assert "【杖剑助手 · 服务器进度】" in text
+    assert "今天：2026-09-14" in text
+    assert "开服日期：2026-06-19" in text
+    assert "当前服务器进度：开服第 88 天" in text
+    assert "当前赛季：S2" in text
+    assert "赛季开始：2026-08-04" in text
+    assert "当前赛季进度：第 42 天" in text
+    assert "2026-09-04 · 10 天前" in text
+    assert "龙国第二期遗物：道衍天机" in text
+    assert "2026-09-18 · 4 天后" in text
+    assert "新幻兽：竹林仙君" in text
+    assert "event_id" not in text
+    assert "confirmed" not in text
+
+
+def test_progress_relative_labels_cover_past_and_future() -> None:
+    timeline_template = {
+        "events": [
+            {
+                "id": "past_node",
+                "type": "season_map",
+                "season": "S2",
+                "name": "过去节点",
+                "status": "confirmed",
+            }
+        ]
+    }
+
+    for server_day, expected_label in (
+        (87, "昨天"),
+        (86, "前天"),
+        (84, "4 天前"),
+    ):
+        timeline = {
+            "events": [
+                dict(event, server_day=server_day)
+                for event in timeline_template["events"]
+            ]
+        }
+        progress = build_server_progress(
+            timeline, today=date(2026, 9, 14), open_date=date(2026, 6, 19)
+        )
+        text = format_server_progress(progress)
+        expected_date = date(2026, 9, 14) - timedelta(days=88 - server_day)
+        assert f"{expected_date.isoformat()} · {expected_label}" in text
+
+
+def test_server_progress_does_not_read_reminder_policy() -> None:
+    timeline = load_timeline("timeline_v1.json")
+    zero_policy = ReminderPolicy(
+        dungeon=0, secret_treasure=0, bingo=0, scratch=0, fenek=0, event=0
+    )
+
+    reminders = build_reminders(
+        timeline,
+        today=date(2026, 9, 14),
+        open_date=date(2026, 6, 19),
+        reminder_policy=zero_policy,
+    )
+    progress = build_server_progress(
+        timeline, today=date(2026, 9, 14), open_date=date(2026, 6, 19)
+    )
+
+    assert reminders == []
+    assert progress.server_day == 88
+    assert progress.next_node is not None

@@ -1367,6 +1367,7 @@ async def test_command_denies_all_subcommands_for_non_admin_without_leaking_qq(
         {"sub": "预览"},
         {"sub": "日程"},
         {"sub": "副本"},
+        {"sub": "进度"},
         {"sub": "测试"},
     ):
         result = await instance.handle_zjcs_command(
@@ -1380,7 +1381,7 @@ async def test_command_denies_all_subcommands_for_non_admin_without_leaking_qq(
         assert result[2] is True
 
     # 未授权提示主动发送，且只发到来源 stream；不触发任何其他发送或状态写入。
-    assert len(instance.ctx.send.calls) == 7
+    assert len(instance.ctx.send.calls) == 8
     assert all(
         message == plugin.COMMAND_DENIED_MESSAGE and stream_id == "operator-stream"
         for message, stream_id, _ in instance.ctx.send.calls
@@ -1428,6 +1429,11 @@ async def test_admin_qqs_empty_allows_any_user_for_every_subcommand(
         "_build_configured_next_dungeon",
         lambda *, today: "【杖剑助手 · 下一个副本】",
     )
+    monkeypatch.setattr(
+        instance,
+        "_build_configured_progress",
+        lambda *, today: "【杖剑助手 · 服务器进度】",
+    )
 
     assert await instance.handle_zjcs_command(
         stream_id="s", user_id="任何用户", matched_groups=None
@@ -1442,6 +1448,9 @@ async def test_admin_qqs_empty_allows_any_user_for_every_subcommand(
         stream_id="s", user_id="第四个用户", matched_groups={"sub": "副本"}
     ) == (True, "下一个副本已发送", True)
     assert await instance.handle_zjcs_command(
+        stream_id="s", user_id="第五个用户", matched_groups={"sub": "进度"}
+    ) == (True, "服务器进度已发送", True)
+    assert await instance.handle_zjcs_command(
         stream_id="s",
         user_id="",
         group_id="123456",
@@ -1449,7 +1458,7 @@ async def test_admin_qqs_empty_allows_any_user_for_every_subcommand(
         matched_groups={"sub": "测试"},
     ) == (True, "测试消息已发送", True)
 
-    assert len(instance.ctx.send.calls) == 5
+    assert len(instance.ctx.send.calls) == 6
 
 
 @pytest.mark.asyncio
@@ -1477,9 +1486,11 @@ async def test_help_is_sent_for_bare_root_help_and_unknown_subcommand(
     assert "不影响提醒状态" in plugin.COMMAND_HELP_MESSAGE
     assert "查看未来 14 天已确认的副本、活动和重要事件" in plugin.COMMAND_HELP_MESSAGE
     assert "查看下一个副本的开放日期、准入战力和准备建议" in plugin.COMMAND_HELP_MESSAGE
+    assert "查看当前开服天数、赛季进度和前后关键节点" in plugin.COMMAND_HELP_MESSAGE
     assert "/zjcs 预览" in plugin.COMMAND_HELP_MESSAGE
     assert "/zjcs 日程" in plugin.COMMAND_HELP_MESSAGE
     assert "/zjcs 副本" in plugin.COMMAND_HELP_MESSAGE
+    assert "/zjcs 进度" in plugin.COMMAND_HELP_MESSAGE
 
 
 @pytest.mark.asyncio
@@ -1993,3 +2004,71 @@ def test_startup_catch_up_runs_today_only() -> None:
         time(9, 0),
         datetime(2026, 1, 1, 9, 0),
     ) == date(2026, 1, 2)
+
+
+@pytest.mark.asyncio
+async def test_progress_command_uses_real_timeline_and_ignores_remind_day(
+    tmp_path, monkeypatch
+) -> None:
+    class _FixedDatetime:
+        @staticmethod
+        def now(tz=None):
+            return datetime(2026, 9, 14, 9, 0, tzinfo=tz)
+
+    config = make_config()
+    config["server"]["open_date"] = "2026-06-19"
+    for field in config["reminders"]:
+        config["reminders"][field] = 0
+
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(tmp_path)
+    instance.set_plugin_config(config)
+    monkeypatch.setattr(plugin, "datetime", _FixedDatetime)
+
+    result = await instance.handle_zjcs_command(
+        stream_id="operator-stream",
+        group_id="123456",
+        platform="qq",
+        matched_groups={"sub": "进度"},
+    )
+
+    assert result == (True, "服务器进度已发送", True)
+    assert len(instance.ctx.send.calls) == 1
+    message, stream_id, _ = instance.ctx.send.calls[0]
+    assert stream_id == "operator-stream"
+    assert "【杖剑助手 · 服务器进度】" in message
+    assert "当前服务器进度：开服第 88 天" in message
+    assert "当前赛季：S2" in message
+    assert "当前赛季进度：第 42 天" in message
+    assert "龙国第二期遗物：道衍天机" in message
+    assert "新幻兽：竹林仙君" in message
+    assert "非人哉联动" not in message
+    # 只读查询：不解析目标群、不广播、不写通知状态。
+    assert instance.ctx.chat.group_stream_calls == []
+    assert instance.ctx.chat.calls == []
+    assert not (tmp_path / "notification_state.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_progress_alias_roots_share_one_implementation(
+    tmp_path, monkeypatch
+) -> None:
+    instance = ZjcsGuildNotifier()
+    instance._ctx = make_context(tmp_path)
+    instance.set_plugin_config(make_config())
+    monkeypatch.setattr(
+        instance,
+        "_build_configured_progress",
+        lambda *, today: "【杖剑助手 · 服务器进度】",
+    )
+
+    first = await instance.handle_zjcs_command(
+        stream_id="s1", matched_groups={"sub": "进度"}
+    )
+    second = await instance.handle_zjcs_command(
+        stream_id="s2", matched_groups={"sub": "进度"}
+    )
+
+    assert first == second == (True, "服务器进度已发送", True)
+    assert [call[1] for call in instance.ctx.send.calls] == ["s1", "s2"]
+    assert not (tmp_path / "notification_state.json").exists()

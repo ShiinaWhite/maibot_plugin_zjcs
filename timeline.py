@@ -47,6 +47,20 @@ class ScheduleEntry:
 
 
 @dataclass(frozen=True)
+class ServerProgress:
+    """服务器进度查询结果：一屏展示当前进度与前后关键节点。"""
+
+    today: date
+    open_date: date
+    server_day: int
+    current_season: str | None
+    season_start_date: date | None
+    season_day: int | None
+    recent_node: ScheduleEntry | None
+    next_node: ScheduleEntry | None
+
+
+@dataclass(frozen=True)
 class ReminderPolicy:
     """每类内容提前提醒的天数；0 表示关闭该类别提醒。"""
 
@@ -567,6 +581,189 @@ def format_next_dungeon(
         )
         lines.extend(["", prepare_text])
     return "\n".join(lines)
+
+
+def build_server_progress(
+    timeline: Mapping[str, Any],
+    *,
+    today: date,
+    open_date: date,
+    season_anchor_dates: Mapping[str, date] | None = None,
+) -> ServerProgress:
+    """汇总服务器当前进度；关键节点仅含服务器/赛季进度型 generic event。"""
+
+    anchors = season_anchor_dates or {}
+    server_day = calculate_server_day(today, open_date)
+    current_server_day = server_day if server_day >= 1 else None
+
+    progression_nodes: list[ScheduleEntry] = []
+    season_candidates: list[tuple[date, str]] = []
+    for raw_event in _mapping_list(timeline.get("events")):
+        entry = _progression_node_entry(
+            raw_event,
+            open_date=open_date,
+            anchors=anchors,
+            current_server_day=current_server_day,
+        )
+        if entry is not None:
+            progression_nodes.append(entry)
+
+        if raw_event.get("type") != "season":
+            continue
+        if raw_event.get("status") not in NOTIFIABLE_STATUSES:
+            continue
+        season = raw_event.get("season")
+        if not isinstance(season, str) or not season:
+            continue
+        event_date = calculate_event_date(raw_event, open_date, anchors)
+        if event_date is None or event_date > today:
+            continue
+        season_candidates.append((event_date, season))
+
+    recent_node: ScheduleEntry | None = None
+    next_node: ScheduleEntry | None = None
+    if progression_nodes:
+        ordered = sorted(
+            progression_nodes, key=lambda item: (item.event_date, item.event_id)
+        )
+        reached = [item for item in ordered if item.event_date <= today]
+        upcoming = [item for item in ordered if item.event_date > today]
+        if reached:
+            recent_node = reached[-1]
+        if upcoming:
+            next_node = upcoming[0]
+
+    current_season: str | None = None
+    season_start_date: date | None = None
+    season_day: int | None = None
+    if season_candidates:
+        season_candidates.sort()
+        season_start_date, current_season = season_candidates[-1]
+        season_day = (today - season_start_date).days + 1
+
+    return ServerProgress(
+        today=today,
+        open_date=open_date,
+        server_day=server_day,
+        current_season=current_season,
+        season_start_date=season_start_date,
+        season_day=season_day,
+        recent_node=recent_node,
+        next_node=next_node,
+    )
+
+
+def _progression_node_entry(
+    raw_event: Mapping[str, Any],
+    *,
+    open_date: date | None,
+    anchors: Mapping[str, date],
+    current_server_day: int | None,
+) -> ScheduleEntry | None:
+    """进度节点仅限 server_day 或 season+season_day 驱动的事件，绝对日历事件不算。"""
+
+    if raw_event.get("status") not in NOTIFIABLE_STATUSES:
+        return None
+    event_id = raw_event.get("id")
+    name = raw_event.get("name")
+    if not isinstance(event_id, str) or not event_id:
+        return None
+    if not isinstance(name, str) or not name:
+        return None
+    has_server_day = _positive_int(raw_event.get("server_day")) is not None
+    season = raw_event.get("season")
+    season_day = _positive_int(raw_event.get("season_day"))
+    has_season_progression = (
+        isinstance(season, str) and bool(season) and season_day is not None
+    )
+    if not has_server_day and not has_season_progression:
+        return None
+    event_date = calculate_event_date(raw_event, open_date, anchors)
+    if event_date is None:
+        return None
+    return ScheduleEntry(
+        event_id=event_id,
+        category="event",
+        name=name,
+        event_date=event_date,
+        payload={"type": raw_event.get("type"), "status": raw_event.get("status")},
+        current_server_day=current_server_day,
+    )
+
+
+def format_server_progress(progress: ServerProgress) -> str:
+    title = "【杖剑助手 · 服务器进度】"
+    lines = [
+        title,
+        "",
+        f"今天：{progress.today.isoformat()}",
+        f"开服日期：{progress.open_date.isoformat()}",
+    ]
+    if progress.server_day < 1:
+        days_until_open = (progress.open_date - progress.today).days
+        lines.extend(
+            [
+                "",
+                "当前状态：服务器尚未开服",
+                f"距离开服：{_progress_relative_label(days_until_open)}",
+            ]
+        )
+        return "\n".join(lines)
+
+    lines.append(f"当前服务器进度：开服第 {progress.server_day} 天")
+
+    if progress.current_season is None or progress.season_start_date is None:
+        lines.extend(["", "当前赛季：尚未进入 S1"])
+    else:
+        lines.extend(
+            [
+                "",
+                f"当前赛季：{progress.current_season}",
+                f"赛季开始：{progress.season_start_date.isoformat()}",
+                f"当前赛季进度：第 {progress.season_day} 天",
+            ]
+        )
+
+    if progress.recent_node is None:
+        lines.extend(["", "最近关键节点：", "暂无已到达的关键节点。"])
+    else:
+        recent_offset = (progress.recent_node.event_date - progress.today).days
+        lines.extend(
+            [
+                "",
+                "最近关键节点：",
+                f"{progress.recent_node.event_date.isoformat()} · {_progress_relative_label(recent_offset)}",
+                progress.recent_node.name,
+            ]
+        )
+
+    if progress.next_node is None:
+        lines.extend(
+            ["", "下一关键节点：", "当前时间线中没有可确定日期的后续关键节点。"]
+        )
+    else:
+        next_offset = (progress.next_node.event_date - progress.today).days
+        lines.extend(
+            [
+                "",
+                "下一关键节点：",
+                f"{progress.next_node.event_date.isoformat()} · {_progress_relative_label(next_offset)}",
+                progress.next_node.name,
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _progress_relative_label(days_offset: int) -> str:
+    """支持正负天数偏移的相对时间：昨天/前天/N天前，今天/明天/后天/N天后。"""
+
+    if days_offset >= 0:
+        return _schedule_relative_label(days_offset)
+    if days_offset == -1:
+        return "昨天"
+    if days_offset == -2:
+        return "前天"
+    return f"{-days_offset} 天前"
 
 
 def _schedule_relative_label(days_until: int) -> str:

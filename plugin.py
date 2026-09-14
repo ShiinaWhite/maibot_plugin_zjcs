@@ -17,11 +17,13 @@ try:
     from .state import NotificationState, StateFileError
     from .timeline import (
         build_reminders,
+        build_server_progress,
         build_upcoming_schedule,
         calculate_server_day,
         find_next_dungeon,
         format_daily_reminders,
         format_next_dungeon,
+        format_server_progress,
         format_upcoming_schedule,
         load_timeline,
         make_notification_key,
@@ -34,11 +36,13 @@ except ImportError:
     from state import NotificationState, StateFileError
     from timeline import (
         build_reminders,
+        build_server_progress,
         build_upcoming_schedule,
         calculate_server_day,
         find_next_dungeon,
         format_daily_reminders,
         format_next_dungeon,
+        format_server_progress,
         format_upcoming_schedule,
         load_timeline,
         make_notification_key,
@@ -72,10 +76,13 @@ COMMAND_HELP_MESSAGE = """【杖剑助手 · 指令帮助】
 /杖剑传说 副本
 查看下一个副本的开放日期、准入战力和准备建议。
 
+/杖剑传说 进度
+查看当前开服天数、赛季进度和前后关键节点。
+
 /杖剑传说 测试
 在当前 QQ 群发送一条链路测试消息。
 
-缩写：/zjcs 预览、/zjcs 日程、/zjcs 副本、/zjcs 测试；发送 /杖剑传说 或 /zjcs 可随时查看本帮助。"""
+缩写：/zjcs 预览、/zjcs 日程、/zjcs 副本、/zjcs 进度、/zjcs 测试；发送 /杖剑传说 或 /zjcs 可随时查看本帮助。"""
 TEST_MESSAGE = """【杖剑助手 · 测试消息】
 
 如果你看到这条消息，说明插件到 QQ 群的发送链路正常。
@@ -380,7 +387,7 @@ class ZjcsGuildNotifier(MaiBotPlugin):
 
     @Command(
         "zjcs_command",
-        description="杖剑助手指令入口：帮助、预览、日程、副本、测试。",
+        description="杖剑助手指令入口：帮助、预览、日程、副本、进度、测试。",
         pattern=COMMAND_PATTERN,
     )
     async def handle_zjcs_command(
@@ -406,6 +413,8 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             return await self._run_schedule(stream_id)
         if subcommand == "副本":
             return await self._run_next_dungeon(stream_id)
+        if subcommand == "进度":
+            return await self._run_progress(stream_id)
         if subcommand == "测试":
             return await self._run_test_send(stream_id, group_id, platform)
         # 帮助、无参数与未知子命令统一返回帮助。
@@ -506,6 +515,20 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             return False, "下一个副本查询失败", True
         return await self._reply_text_to_stream(
             stream_id, message, "下一个副本已发送", "下一个副本发送失败"
+        )
+
+    async def _run_progress(self, stream_id: str):
+        if not stream_id:
+            return False, "缺少命令来源 stream_id", True
+        try:
+            timezone, _ = self._validated_schedule()
+            today = datetime.now(timezone).date()
+            message = self._build_configured_progress(today=today)
+        except (OSError, TypeError, ValueError, RuntimeError) as exc:
+            self._logger.error("服务器进度查询失败：%s", exc)
+            return False, "服务器进度查询失败", True
+        return await self._reply_text_to_stream(
+            stream_id, message, "服务器进度已发送", "服务器进度发送失败"
         )
 
     async def _run_test_send(self, stream_id: str, group_id: str, platform: str):
@@ -731,6 +754,16 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             season_anchor_dates=season_anchor_dates,
         )
         return format_next_dungeon(entry, today=today)
+
+    def _build_configured_progress(self, *, today: date) -> str:
+        open_date, season_anchor_dates = self._configured_timeline_dates()
+        progress = build_server_progress(
+            load_timeline(TIMELINE_PATH),
+            today=today,
+            open_date=open_date,
+            season_anchor_dates=season_anchor_dates,
+        )
+        return format_server_progress(progress)
 
     async def _send_text_with_retry(self, message: str, group_id: str) -> bool:
         """有限重试一条消息，并在每次 retry 前重新解析目标群 stream。"""
