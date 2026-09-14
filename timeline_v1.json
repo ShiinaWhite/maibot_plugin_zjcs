@@ -725,14 +725,14 @@
     {
       "id": "feiren_zai_collaboration",
       "type": "collaboration",
-      "server_day": 98,
+      "event_date": "2026-09-24",
       "name": "非人哉联动",
       "status": "confirmed",
       "sources": [
         "taptap_feirenzai_official",
         "taptap_feirenzai_repost"
       ],
-      "notes": "官方公告原文：「杖剑传说×非人哉联动将于9月24日正式开启，一群神仙即将抵达坎斯汀」。官方口径为绝对日期 2026-09-24；对 2026-06-19 开服的服务器即开服第 98 天。按 server_day 建模以复用通用事件提醒链路；这是日历限定联动而非赛季内容，因此不填 season。"
+      "notes": "官方公告原文：「杖剑传说×非人哉联动将于9月24日正式开启，一群神仙即将抵达坎斯汀」。这是全服同一自然日开启的绝对日历活动，按 event_date 建模，与 open_date 无关；对 2026-06-19 开服的当前生产服务器，该日期恰为开服第 98 天，但 Day 98 只是当前服务器的换算结果，不作为事件规则。"
     },
     {
       "id": "season_s3_start",

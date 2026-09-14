@@ -389,7 +389,8 @@ def test_feiren_zai_collaboration_data_uses_registered_sources() -> None:
 
     assert event["name"] == "非人哉联动"
     assert event["type"] == "collaboration"
-    assert event["server_day"] == 98
+    assert event["event_date"] == "2026-09-24"
+    assert "server_day" not in event
     assert event["status"] == "confirmed"
 
     registered_sources = set(timeline["sources"])
@@ -400,10 +401,24 @@ def test_feiren_zai_collaboration_data_uses_registered_sources() -> None:
     )
 
 
-def test_feiren_zai_server_day_98_maps_to_official_date() -> None:
+def test_feiren_zai_absolute_date_is_independent_of_open_date() -> None:
     event = _feiren_zai_event()
 
     assert calculate_event_date(event, date(2026, 6, 19), {}) == date(2026, 9, 24)
+    assert calculate_event_date(event, date(2026, 7, 1), {}) == date(2026, 9, 24)
+    assert calculate_event_date(event, None, {}) == date(2026, 9, 24)
+
+
+def test_explicit_event_date_takes_priority_over_server_day() -> None:
+    item = {"event_date": "2026-09-24", "server_day": 1}
+
+    assert calculate_event_date(item, date(2026, 1, 1), {}) == date(2026, 9, 24)
+
+
+def test_invalid_event_date_is_skipped() -> None:
+    assert (
+        calculate_event_date({"event_date": "2026-13-99"}, date(2026, 1, 1), {}) is None
+    )
 
 
 def test_feiren_zai_collaboration_reminds_two_days_before() -> None:

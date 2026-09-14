@@ -95,6 +95,17 @@ def calculate_event_date(
     open_date: date | None,
     season_anchor_dates: Mapping[str, date],
 ) -> date | None:
+    explicit_date = item.get("event_date")
+    if explicit_date is not None:
+        if isinstance(explicit_date, date):
+            return explicit_date
+        if isinstance(explicit_date, str) and explicit_date:
+            try:
+                return date.fromisoformat(explicit_date)
+            except ValueError:
+                return None
+        return None
+
     season_day = _positive_int(item.get("season_day"))
     season = item.get("season")
     anchor_date = (

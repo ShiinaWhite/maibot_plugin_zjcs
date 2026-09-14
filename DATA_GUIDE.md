@@ -90,6 +90,18 @@ season_anchor_date + season_day
 
 当前只有一个公会服务器，不需要做多服务器管理平台，但数据模型不应把后续赛季永久锁死到唯一绝对 Day。
 
+### 绝对日历事件
+
+全服同一自然日开启的联动、节日、限时活动，使用绝对日期字段：
+
+```text
+event_date = YYYY-MM-DD
+```
+
+`event_date` 与 `open_date` 无关，任何服务器都得到同一日期；计算优先级高于 `season_day` / `server_day`。
+
+这类事件不得换算成某个服务器的 `server_day` 再写成全局规则；`server_day` 只表示真正随服务器开服进度变化的内容。
+
 ## 副本战力
 
 副本的 `requirements` 是动态难度映射，例如：
