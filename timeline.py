@@ -808,28 +808,24 @@ def build_secret_treasure_overview(
         )
     first_server_day, period_days, explicit_phases, fallback_categories = inputs
 
-    def phase_server_day(phase_number: int) -> int:
-        explicit = explicit_phases.get(phase_number)
-        if explicit is not None:
-            override = _positive_int(explicit.get("server_day"))
-            if override is not None:
-                return override
-        return first_server_day + (phase_number - 1) * period_days
-
-    # 候选期 = 覆盖到当前天数之后的公式期次 ∪ 全部显式期次；
-    # 显式 server_day override 天然参与排序，保证 explicit 优先于公式。
-    formula_next_n = max(1, (current_server_day - first_server_day) // period_days + 2)
-    candidate_numbers = set(range(1, formula_next_n + 1)) | set(explicit_phases)
+    # 候选期 = 有界生成的公式期次 ∪ 全部显式期次；显式 server_day override
+    # 允许打破“期号顺序 == 时间顺序”，因此不能按公式推算候选范围边界。
+    candidate_days = _secret_treasure_occurrence_days(
+        first_server_day,
+        period_days,
+        explicit_phases,
+        through_server_day=current_server_day,
+    )
 
     phases: list[SecretTreasurePhase] = [
         _secret_treasure_phase(
             phase_number,
-            phase_server_day(phase_number),
+            phase_day,
             explicit_phases,
             fallback_categories,
             open_date,
         )
-        for phase_number in sorted(candidate_numbers)
+        for phase_number, phase_day in sorted(candidate_days.items())
     ]
     phases.sort(key=lambda item: (item.server_day, item.phase))
 
@@ -844,6 +840,39 @@ def build_secret_treasure_overview(
         current_phase=current_phase,
         next_phase=next_phase,
     )
+
+
+def _secret_treasure_occurrence_days(
+    first_server_day: int,
+    period_days: int,
+    explicit_phases: Mapping[int, Mapping[str, Any]],
+    *,
+    through_server_day: int,
+) -> dict[int, int]:
+    """生成期次→开服日映射；显式 server_day override 优先于公式。
+
+    终止依据：公式开服日随期号严格递增，因此遇到第一个未被显式覆盖
+    且越过 through_server_day 的公式期次后，其余未覆盖期次必然更晚；
+    全部显式期次均已来自 known_phases，此时候选集即完整且有界。
+    """
+
+    occurrence_days: dict[int, int] = {}
+    phase_number = 1
+    while True:
+        explicit = explicit_phases.get(phase_number)
+        override = (
+            _positive_int(explicit.get("server_day"))
+            if isinstance(explicit, Mapping)
+            else None
+        )
+        formula_day = first_server_day + (phase_number - 1) * period_days
+        if override is not None:
+            occurrence_days[phase_number] = override
+        else:
+            occurrence_days[phase_number] = formula_day
+            if formula_day > through_server_day:
+                return occurrence_days
+        phase_number += 1
 
 
 def _secret_treasure_phase(

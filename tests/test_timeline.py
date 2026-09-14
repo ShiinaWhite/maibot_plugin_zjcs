@@ -2182,3 +2182,97 @@ def test_secret_treasure_relative_labels_cover_recent_and_upcoming() -> None:
 
     assert "（今天）" in text
     assert "（7 天后）" in text
+
+
+def _overview_with_explicit_phases(
+    known_phases: list[dict[str, object]],
+    *,
+    today: date,
+    open_date: date = date(2026, 6, 19),
+    first_server_day: int = 8,
+    period_days: int = 7,
+):
+    timeline = {
+        "activity_rules": {
+            "secret_treasure_battle": {
+                "first_server_day": first_server_day,
+                "period_days": period_days,
+                "known_phases": known_phases,
+            }
+        }
+    }
+    return build_secret_treasure_overview(timeline, today=today, open_date=open_date)
+
+
+def test_secret_treasure_explicit_earlier_override_extends_candidate_range() -> None:
+    # 显式把第 3 期提前到 Day 14（公式为 Day 22）：真正的下一期是公式第 4 期，
+    # 候选范围不能按公式边界截断，否则 next 会被错误判为 None。
+    overview = _overview_with_explicit_phases(
+        [
+            {
+                "phase": 3,
+                "server_day": 14,
+                "name": "秘宝大作战·第3期",
+                "status": "confirmed",
+                "featured_reward": {"name": "确认大奖", "status": "confirmed"},
+            }
+        ],
+        today=date(2026, 7, 4),
+    )
+
+    assert overview.current_server_day == 16
+    assert overview.current_phase is not None
+    assert overview.current_phase.phase == 2
+    assert overview.current_phase.server_day == 15
+    assert overview.next_phase is not None
+    assert overview.next_phase.phase == 4
+    assert overview.next_phase.server_day == 29
+
+
+def test_secret_treasure_exact_override_day_belongs_to_current() -> None:
+    # 显式第 3 期恰好落在今天（Day 16）：该期属于 current，next 是其后最早一期。
+    overview = _overview_with_explicit_phases(
+        [
+            {
+                "phase": 3,
+                "server_day": 16,
+                "name": "秘宝大作战·第3期",
+                "status": "confirmed",
+                "featured_reward": {"name": "确认大奖", "status": "confirmed"},
+            }
+        ],
+        today=date(2026, 7, 4),
+    )
+
+    assert overview.current_phase is not None
+    assert overview.current_phase.phase == 3
+    assert overview.current_phase.server_day == 16
+    assert overview.next_phase is not None
+    assert overview.next_phase.phase == 4
+    assert overview.next_phase.server_day == 29
+
+
+def test_secret_treasure_large_override_stays_bounded_and_correct() -> None:
+    # 显式把第 1 期推迟到 Day 500：查询仍正确、有界，且不被 Phase 1 干扰。
+    overview = _overview_with_explicit_phases(
+        [
+            {
+                "phase": 1,
+                "server_day": 500,
+                "name": "秘宝大作战·第1期",
+                "status": "confirmed",
+                "featured_reward": {"name": "远期大奖", "status": "confirmed"},
+            }
+        ],
+        today=date(2026, 7, 18),
+    )
+
+    assert overview.current_server_day == 30
+    assert overview.current_phase is not None
+    assert overview.current_phase.phase == 4
+    assert overview.current_phase.server_day == 29
+    assert overview.next_phase is not None
+    assert overview.next_phase.phase == 5
+    assert overview.next_phase.server_day == 36
+    text = format_secret_treasure_overview(overview)
+    assert "重点奖励：远期大奖" not in text
