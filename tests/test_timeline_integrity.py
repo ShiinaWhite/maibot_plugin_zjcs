@@ -373,3 +373,56 @@ def test_treasure_audit_allows_absent_explicit_server_day() -> None:
     ]
 
     assert treasure_issues == []
+
+
+def test_explicit_null_carriers_fail_closed() -> None:
+    from timeline import calculate_event_date
+
+    for null_carrier in ({"server_day": None}, {"season_day": None}):
+        event = {
+            "id": "null_carrier",
+            "name": "空载体事件",
+            "event_date": "2026-09-24",
+            "status": "confirmed",
+            **null_carrier,
+        }
+        timeline = _timeline_with_event(dict(event))
+
+        assert calculate_event_date(dict(event), date(2026, 6, 19), {}) is None, (
+            f"{null_carrier} 应 fail closed"
+        )
+        assert audit_timeline_integrity(timeline), f"{null_carrier} 应产生 audit issue"
+
+
+def test_audit_reward_integrity_not_bound_to_server_day_branch() -> None:
+    # 公式期次（无 server_day）+ confirmed/confirmed 但 reward name 为空
+    # → audit 必须报 issue，不能被 server_day 分支的 continue 意外跳过。
+    timeline = {
+        "activity_rules": {
+            "secret_treasure_battle": {
+                "first_server_day": 8,
+                "period_days": 7,
+                "known_phases": [
+                    {
+                        "phase": 3,
+                        "status": "confirmed",
+                        "featured_reward": {"status": "confirmed"},
+                    }
+                ],
+            }
+        }
+    }
+
+    issues = audit_timeline_integrity(timeline)
+
+    assert any("featured_reward.name" in issue for issue in issues)
+
+    # 对照：同样的 phase 带上合法 reward name → 无 issue。
+    ok_phase = {
+        "phase": 3,
+        "status": "confirmed",
+        "featured_reward": {"name": "合法奖励", "status": "confirmed"},
+    }
+    timeline["activity_rules"]["secret_treasure_battle"]["known_phases"] = [ok_phase]
+
+    assert audit_timeline_integrity(timeline) == []

@@ -159,14 +159,14 @@ def calculate_server_day(today: date, open_date: date) -> int:
 def _timeline_date_model(item: Mapping[str, Any]) -> str | None:
     """识别条目唯一的日期模型：event_date / server_day / season_day。
 
-    区分「字段缺失」与「字段存在但非法」：后者属于坏数据，立即 fail
-    closed 返回 None，而不是悄悄忽略后改用其他载体。允许 0 个或多个
-    合法载体共存时同样返回 None。season 字段本身是元数据，可与
-    server_day 合法共存。
+    区分「字段缺失」与「字段存在但非法」：后者（含显式 null）属于坏
+    数据，立即 fail closed 返回 None，而不是悄悄忽略后改用其他载体。
+    「没有这个模型」应通过不写字段表达。允许 0 个或多个合法载体共存
+    时同样返回 None。season 字段本身是元数据，可与 server_day 合法共存。
     """
 
     carriers: list[str] = []
-    if "event_date" in item and item["event_date"] is not None:
+    if "event_date" in item:
         event_date = item["event_date"]
         if isinstance(event_date, str) and event_date:
             try:
@@ -176,11 +176,11 @@ def _timeline_date_model(item: Mapping[str, Any]) -> str | None:
             carriers.append("event_date")
         else:
             return None
-    if "server_day" in item and item["server_day"] is not None:
+    if "server_day" in item:
         if _positive_int(item["server_day"]) is None:
             return None
         carriers.append("server_day")
-    if "season_day" in item and item["season_day"] is not None:
+    if "season_day" in item:
         season = item.get("season")
         if _positive_int(item["season_day"]) is None:
             return None
@@ -1739,20 +1739,20 @@ def _audit_secret_treasure_rule(
         else:
             seen_phases[number] = phase_label
 
-        if "server_day" not in phase:
-            continue
-        override_day = _positive_int(phase.get("server_day"))
-        if override_day is None:
-            issues.append(f"{phase_label}: server_day 如果存在必须是正整数")
-            continue
-        if override_day in seen_override_days:
-            issues.append(
-                f"{phase_label}: 显式 server_day {override_day} "
-                f"与 {seen_override_days[override_day]} 重复"
-            )
-        else:
-            seen_override_days[override_day] = phase_label
+        # server_day 是可选 override：缺失合法（走公式），存在但非法报 issue。
+        if "server_day" in phase:
+            override_day = _positive_int(phase.get("server_day"))
+            if override_day is None:
+                issues.append(f"{phase_label}: server_day 如果存在必须是正整数")
+            elif override_day in seen_override_days:
+                issues.append(
+                    f"{phase_label}: 显式 server_day {override_day} "
+                    f"与 {seen_override_days[override_day]} 重复"
+                )
+            else:
+                seen_override_days[override_day] = phase_label
 
+        # reward integrity 独立于 server_day 是否存在。
         phase_status = phase.get("status")
         reward = phase.get("featured_reward")
         if (
