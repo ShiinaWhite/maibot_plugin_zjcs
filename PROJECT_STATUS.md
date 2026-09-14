@@ -4,24 +4,28 @@
 
 ## 当前阶段
 
-**当前正式生产版本为 0.1.5（commit `f3ca28f`），已于 2026-09-14 完成生产部署。仓库当前版本为 0.1.12 Release Candidate，尚未部署。**
+**当前正式生产版本为 0.1.12（commit `27d1db8`），已于 2026-09-15 完成生产部署与技术验收。**
 
-0.1.6～0.1.10 新增了群内主动查询能力（日程 / 副本 / 进度 / 秘宝 / 活动），0.1.11 完成时间线数据一致性与抗坏数据 hardening；0.1.12 为最终 Release Candidate，正在等待外部部署候选 Review，通过后进入 0.1.5 → 0.1.12 的正式生产部署。
+0.1.6～0.1.10 新增了群内主动查询能力（日程 / 副本 / 进度 / 秘宝 / 活动），0.1.11 完成时间线数据一致性与抗坏数据 hardening，0.1.12 为最终 Release Candidate 收口；以上均已通过外部 Review 并进入生产。
 
 ## 生产版本事实
 
-- production code commit：`f3ca28fb2e54048232fba356edda60f8fe344ee4`
-- plugin version：`0.1.5`（显示名「杖剑助手」，plugin id `zjcs.guild-notifier`）
+- production code commit：`27d1db80bf700120f7835042d79f7d63422d76fe`
+- plugin version：`0.1.12`（显示名「杖剑助手」，plugin id `zjcs.guild-notifier`）
 - config version：`1.4.0`
 - notification state version：`2`
 
-0.1.5 已于 2026-09-14 完成生产部署并验收：5 个生产发布文件按 Git blob 字节部署并逐文件校验一致；timeline.py 的 event_date 绝对日历事件支持已上线；Core recreate 后最终 healthy，Extension Runner 加载插件成功且失败为 0；生产 config 与 notification state 在部署前后 hash 不变；无 config/state migration；部署期间没有额外正式提醒发送；NapCat 未重启。
+0.1.5 已于 2026-09-14 完成生产部署（5 个生产发布文件按 Git blob 字节部署并逐文件校验一致；timeline.py 的 event_date 绝对日历事件支持上线）。0.1.12 已于 2026-09-15 完成生产部署并验收：Core recreate 后 healthy，Extension Runner 加载插件成功且失败为 0，live 五文件与 commit blob byte-equal；生产 config 与 notification state 在部署前后 hash 不变；无 config/state migration；部署期间没有额外正式提醒发送；NapCat 未重启；回滚 target 为 f3ca28f（0.1.5）。
 
-非人哉联动（event_date 2026-09-24）已进入生产时间线；按 event_remind_day=2，预计 2026-09-22 09:00 进入提醒窗口，待自然生产观察确认。
+生产 reminders 实际配置为：dungeon=2、secret_treasure=1、bingo=4、scratch=1、fenek=1、event=1。
+
+非人哉联动（event_date 2026-09-24）已进入生产时间线；按生产 event_remind_day=1，自然提醒窗口为 **2026-09-23 09:00**（提醒正文「1 天后 · 2026-09-24」），尚未完成自然生产观察。
+
+生产 QQ 人工验收（`/杖剑传说` 帮助确认与 `/杖剑传说 日程` 抽查）尚未执行，等待操作者方便时进行。
 
 ## Release Candidate 状态
 
-- **0.1.12：Release Candidate，尚未部署。**
+- **0.1.12：已于 2026-09-15 部署生产并完成技术验收（通过外部部署候选 Review 与生产部署验收 Review）。**
 - 概括：0.1.6～0.1.10 新增群内主动查询（`/杖剑传说 日程`、`/杖剑传说 副本`、`/杖剑传说 进度`、`/杖剑传说 秘宝`、`/杖剑传说 活动`），全部为只读查询、不写通知状态、不依赖提醒提前天数；0.1.11 完成时间线数据一致性与抗坏数据 hardening（日期模型互斥、ID/来源/期次审计、发布前 integrity gate）。
 
 ## V1.2 能力摘要

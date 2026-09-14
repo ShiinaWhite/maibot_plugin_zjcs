@@ -138,6 +138,17 @@ Core healthy；Extension Runner healthy；`zjcs.guild-notifier` 加载成功且 
 
 候选阶段不发送 QQ。正式部署后由管理员在真实 QQ 当前群人工执行 `/杖剑传说` 确认帮助包含预览/日程/副本/进度/秘宝/活动/测试，并至少执行一个新增只读查询（如 `/杖剑传说 日程`）确认回复来源群、不跨群、不影响 state；其他查询按需抽查；`/杖剑传说 测试` 仅在操作者明确希望重新验证发送链路时执行，不作为部署脚本的一部分。
 
+### 0.1.5 → 0.1.12 实际部署记录（2026-09-15）
+
+0.1.12（commit `27d1db80bf700120f7835042d79f7d63422d76fe`）已于 2026-09-15 01:30 ～ 01:35 完成生产部署（远离 09:00 检查窗口）：
+
+- 备份目录 `/srv/maibot/backups/zjcs-v0.1.12-20260915-013018/`（config/state/compose，hash 已记录）；
+- staging 与 live 双端 git blob 校验全部一致，release/runtime 归档已建立（旧 f3ca28f 归档未覆盖）；
+- `docker compose config -q` 通过，仅 recreate Core，NapCat 未动；
+- 部署后 Core healthy，Extension Runner 加载 zjcs.guild-notifier 成功且失败=0；
+- 生产 config.toml 与 notification_state.json 部署前后 hash 不变（config 1.4.0、state 2、历史 keys 完整），无 migration，无额外正式提醒发送；
+- 生产 reminders 实际值记录：dungeon=2、secret_treasure=1、bingo=4、scratch=1、fenek=1、event=1；非人哉（2026-09-24）自然提醒窗口为 2026-09-23 09:00。
+
 ### 回滚预案
 
 默认 rollback target：commit `f3ca28f...`（plugin 0.1.5），其 release 归档已保留。回滚代码 = 恢复 0.1.5 的完整 5 个发布文件 + 仅 recreate Core。
