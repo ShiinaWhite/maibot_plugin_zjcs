@@ -9,6 +9,9 @@ from timeline import (
     build_reminders,
     build_upcoming_schedule,
     calculate_event_date,
+    dungeon_prepare_date,
+    find_next_dungeon,
+    format_next_dungeon,
     format_power,
     format_daily_reminders,
     format_relative_day,
@@ -1357,3 +1360,271 @@ def test_real_schedule_format_matches_expected_layout() -> None:
     assert "【事件】非人哉联动" in text
     assert "重点奖励：自选奇迹遗物箱·龙Ⅱ（道衍天机）" in text
     assert "【副本】龙之国 · 仙海云舟" in text
+
+
+def _dungeon(
+    dungeon_id: str,
+    *,
+    name: str = "测试副本",
+    server_day: int | None = None,
+    event_date: str | None = None,
+    status: str = "confirmed",
+    region: str = "测试区",
+    requirements: dict[str, object] | None = None,
+) -> dict[str, object]:
+    item: dict[str, object] = {
+        "id": dungeon_id,
+        "region": region,
+        "name": name,
+        "status": status,
+    }
+    if server_day is not None:
+        item["server_day"] = server_day
+    if event_date is not None:
+        item["event_date"] = event_date
+    if requirements is not None:
+        item["requirements"] = requirements
+    return item
+
+
+def _next_dungeon_from(
+    dungeons: list[dict[str, object]],
+    *,
+    today: date,
+    open_date: date | None = date(2026, 6, 19),
+) -> object:
+    timeline: dict[str, object] = {"dungeons": dungeons}
+    return find_next_dungeon(
+        timeline, today=today, open_date=open_date, season_anchor_dates={}
+    )
+
+
+def test_find_next_dungeon_picks_nearest_future_and_ignores_past() -> None:
+    entry = _next_dungeon_from(
+        [
+            _dungeon("old_one", name="已开副本", server_day=10),
+            _dungeon("far_one", name="远期副本", server_day=150),
+            _dungeon("near_one", name="近期副本", server_day=99),
+        ],
+        today=date(2026, 9, 14),
+    )
+
+    assert entry is not None
+    assert entry.event_id == "near_one"
+    assert entry.name == "近期副本"
+    assert entry.event_date == date(2026, 9, 25)
+
+
+def test_find_next_dungeon_includes_one_opening_today() -> None:
+    entry = _next_dungeon_from(
+        [
+            _dungeon("today_one", name="今日副本", server_day=88),
+            _dungeon("later_one", name="后续副本", server_day=99),
+        ],
+        today=date(2026, 9, 14),
+    )
+
+    assert entry is not None
+    assert entry.event_id == "today_one"
+    assert entry.event_date == date(2026, 9, 14)
+
+
+def test_find_next_dungeon_returns_none_when_all_are_past() -> None:
+    entry = _next_dungeon_from(
+        [_dungeon("past_one", name="历史副本", server_day=10)],
+        today=date(2026, 9, 14),
+    )
+
+    assert entry is None
+
+
+def test_find_next_dungeon_breaks_same_date_tie_by_event_id() -> None:
+    entry = _next_dungeon_from(
+        [
+            _dungeon("zeta_dungeon", name="同日乙", server_day=99),
+            _dungeon("alpha_dungeon", name="同日甲", server_day=99),
+        ],
+        today=date(2026, 9, 14),
+    )
+
+    assert entry is not None
+    assert entry.event_id == "alpha_dungeon"
+
+
+def test_find_next_dungeon_supports_absolute_event_date() -> None:
+    entry = _next_dungeon_from(
+        [_dungeon("calendar_dungeon", name="日历副本", event_date="2026-09-20")],
+        today=date(2026, 9, 14),
+        open_date=None,
+    )
+
+    assert entry is not None
+    assert entry.event_date == date(2026, 9, 20)
+
+
+def test_find_next_dungeon_skips_season_day_without_anchor() -> None:
+    timeline = {
+        "dungeons": [
+            {
+                "id": "s6_dungeon",
+                "region": "艾珀希",
+                "name": "潮汐灵殿",
+                "season": "S6",
+                "season_day": 14,
+                "status": "pending_formal_power",
+            }
+        ]
+    }
+
+    assert (
+        find_next_dungeon(
+            timeline,
+            today=date(2026, 9, 14),
+            open_date=date(2026, 6, 19),
+            season_anchor_dates={},
+        )
+        is None
+    )
+    entries = build_upcoming_schedule(
+        timeline,
+        today=date(2026, 9, 14),
+        open_date=date(2026, 6, 19),
+    )
+    assert entries == []
+
+
+def test_find_next_dungeon_uses_anchor_when_present() -> None:
+    timeline = {
+        "dungeons": [
+            {
+                "id": "s6_dungeon",
+                "region": "艾珀希",
+                "name": "潮汐灵殿",
+                "season": "S6",
+                "season_day": 14,
+                "status": "confirmed",
+            }
+        ]
+    }
+
+    entry = find_next_dungeon(
+        timeline,
+        today=date(2026, 11, 10),
+        open_date=date(2026, 6, 19),
+        season_anchor_dates={"S6": date(2026, 11, 1)},
+    )
+
+    assert entry is not None
+    assert entry.event_date == date(2026, 11, 14)
+    assert entry.payload["requirements"] == {}
+
+
+def test_real_next_dungeon_is_immortal_sea_ark_with_confirmed_requirements() -> None:
+    timeline = load_timeline("timeline_v1.json")
+
+    entry = find_next_dungeon(
+        timeline, today=date(2026, 9, 14), open_date=date(2026, 6, 19)
+    )
+
+    assert entry is not None
+    assert entry.name == "仙海云舟"
+    assert entry.payload["region"] == "龙之国"
+    assert entry.event_date == date(2026, 9, 25)
+    assert entry.payload["requirements"] == {
+        "普通": 16_500_000,
+        "困难": 20_000_000,
+        "噩梦": 24_500_000,
+        "炼狱": 40_000_000,
+    }
+
+
+def test_dungeon_prepare_date_is_single_source_for_reminder_and_query() -> None:
+    assert dungeon_prepare_date(date(2026, 9, 25)) == date(2026, 9, 24)
+    timeline = load_timeline("timeline_v1.json")
+    entry = find_next_dungeon(
+        timeline, today=date(2026, 9, 14), open_date=date(2026, 6, 19)
+    )
+    assert entry is not None
+    assert dungeon_prepare_date(entry.event_date) == date(2026, 9, 24)
+
+
+def test_format_next_dungeon_renders_full_details() -> None:
+    timeline = load_timeline("timeline_v1.json")
+    entry = find_next_dungeon(
+        timeline, today=date(2026, 9, 14), open_date=date(2026, 6, 19)
+    )
+
+    text = format_next_dungeon(entry, today=date(2026, 9, 14))
+
+    assert "【杖剑助手 · 下一个副本】" in text
+    assert "龙之国 · 仙海云舟" in text
+    assert "开放日期：2026-09-25" in text
+    assert "距离开放：11 天后" in text
+    assert "已确认准入战力：" in text
+    assert "普通：1650万" in text
+    assert "困难：2000万" in text
+    assert "噩梦：2450万" in text
+    assert "炼狱：4000万" in text
+    assert "准备建议：2026-09-24 开始攒副本次数（10 天后）。" in text
+
+
+def test_format_next_dungeon_pending_power_states_data_is_unreliable() -> None:
+    timeline = {
+        "dungeons": [
+            {
+                "id": "tide_temple",
+                "region": "艾珀希",
+                "name": "潮汐灵殿",
+                "season": "S6",
+                "season_day": 14,
+                "status": "pending_formal_power",
+                "requirements": None,
+            }
+        ]
+    }
+    entry = find_next_dungeon(
+        timeline,
+        today=date(2026, 11, 10),
+        open_date=date(2026, 6, 19),
+        season_anchor_dates={"S6": date(2026, 11, 1)},
+    )
+
+    text = format_next_dungeon(entry, today=date(2026, 11, 10))
+
+    assert "【副本潮汐灵殿" not in text
+    assert "艾珀希 · 潮汐灵殿" in text
+    assert "准入战力：暂未获得可靠的正式服数据。" in text
+    assert "已确认准入战力" not in text
+
+
+def test_format_next_dungeon_prepare_starts_today_when_dungeon_opens_tomorrow() -> None:
+    timeline = {
+        "dungeons": [_dungeon("tomorrow_dungeon", name="明日副本", server_day=89)]
+    }
+    entry = find_next_dungeon(
+        timeline, today=date(2026, 9, 14), open_date=date(2026, 6, 19)
+    )
+
+    text = format_next_dungeon(entry, today=date(2026, 9, 14))
+
+    assert "准备建议：2026-09-14 开始攒副本次数（今天）。" in text
+
+
+def test_format_next_dungeon_does_not_suggest_pasting_counts_when_open_today() -> None:
+    timeline = {"dungeons": [_dungeon("today_dungeon", name="今日副本", server_day=88)]}
+    entry = find_next_dungeon(
+        timeline, today=date(2026, 9, 14), open_date=date(2026, 6, 19)
+    )
+
+    text = format_next_dungeon(entry, today=date(2026, 9, 14))
+
+    assert "距离开放：今天" in text
+    assert "准备建议：副本今天开放，无需再提前攒次数。" in text
+    assert "昨天" not in text
+
+
+def test_format_next_dungeon_none_uses_empty_notice() -> None:
+    assert (
+        format_next_dungeon(None, today=date(2026, 9, 14))
+        == "【杖剑助手 · 下一个副本】\n\n当前时间线中没有可确定日期的后续副本。"
+    )

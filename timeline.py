@@ -250,32 +250,15 @@ def build_upcoming_schedule(
     entries: list[ScheduleEntry] = []
 
     for raw_dungeon in _mapping_list(timeline.get("dungeons")):
-        status = raw_dungeon.get("status")
-        if status not in NOTIFIABLE_STATUSES and status != "pending_formal_power":
-            continue
-        event_id = raw_dungeon.get("id")
-        name = raw_dungeon.get("name")
-        if not isinstance(event_id, str) or not event_id:
-            continue
-        if not isinstance(name, str) or not name:
-            continue
-        event_date = calculate_event_date(raw_dungeon, open_date, anchors)
-        if event_date is None or not today <= event_date <= end_date:
-            continue
-        entries.append(
-            ScheduleEntry(
-                event_id=event_id,
-                category="dungeon",
-                name=name,
-                event_date=event_date,
-                payload={
-                    "region": raw_dungeon.get("region"),
-                    "requirements": _confirmed_requirements(raw_dungeon),
-                    "status": status,
-                },
-                current_server_day=current_server_day,
-            )
+        entry = _dungeon_schedule_entry(
+            raw_dungeon,
+            open_date=open_date,
+            anchors=anchors,
+            current_server_day=current_server_day,
         )
+        if entry is None or not today <= entry.event_date <= end_date:
+            continue
+        entries.append(entry)
 
     for raw_event in _mapping_list(timeline.get("events")):
         if raw_event.get("status") not in NOTIFIABLE_STATUSES:
@@ -327,6 +310,75 @@ def build_upcoming_schedule(
             _CATEGORY_ORDER.get(item.category, 99),
             item.event_id,
         ),
+    )
+
+
+def dungeon_prepare_date(event_date: date) -> date:
+    """副本开放前 1 天开始攒次数；正式提醒与主动查询共用同一规则。"""
+
+    return event_date - timedelta(days=1)
+
+
+def find_next_dungeon(
+    timeline: Mapping[str, Any],
+    *,
+    today: date,
+    open_date: date | None,
+    season_anchor_dates: Mapping[str, date] | None = None,
+) -> ScheduleEntry | None:
+    """返回今天起（含今天）最近一个日期可确定的副本；只读查询。"""
+
+    anchors = season_anchor_dates or {}
+    current_server_day = (
+        calculate_server_day(today, open_date) if open_date is not None else None
+    )
+    candidates: list[ScheduleEntry] = []
+    for raw_dungeon in _mapping_list(timeline.get("dungeons")):
+        entry = _dungeon_schedule_entry(
+            raw_dungeon,
+            open_date=open_date,
+            anchors=anchors,
+            current_server_day=current_server_day,
+        )
+        if entry is None or entry.event_date < today:
+            continue
+        candidates.append(entry)
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item.event_date, item.event_id))
+    return candidates[0]
+
+
+def _dungeon_schedule_entry(
+    raw_dungeon: Mapping[str, Any],
+    *,
+    open_date: date | None,
+    anchors: Mapping[str, date],
+    current_server_day: int | None,
+) -> ScheduleEntry | None:
+    status = raw_dungeon.get("status")
+    if status not in NOTIFIABLE_STATUSES and status != "pending_formal_power":
+        return None
+    event_id = raw_dungeon.get("id")
+    name = raw_dungeon.get("name")
+    if not isinstance(event_id, str) or not event_id:
+        return None
+    if not isinstance(name, str) or not name:
+        return None
+    event_date = calculate_event_date(raw_dungeon, open_date, anchors)
+    if event_date is None:
+        return None
+    return ScheduleEntry(
+        event_id=event_id,
+        category="dungeon",
+        name=name,
+        event_date=event_date,
+        payload={
+            "region": raw_dungeon.get("region"),
+            "requirements": _confirmed_requirements(raw_dungeon),
+            "status": status,
+        },
+        current_server_day=current_server_day,
     )
 
 
@@ -470,6 +522,50 @@ def format_upcoming_schedule(
             )
             current_date = entry.event_date
         lines.extend(_schedule_entry_lines(entry))
+    return "\n".join(lines)
+
+
+def format_next_dungeon(
+    entry: ScheduleEntry | None,
+    *,
+    today: date,
+) -> str:
+    title = "【杖剑助手 · 下一个副本】"
+    if entry is None:
+        return f"{title}\n\n当前时间线中没有可确定日期的后续副本。"
+
+    region = entry.payload.get("region")
+    name = (
+        f"{region} · {entry.name}" if isinstance(region, str) and region else entry.name
+    )
+    lines = [
+        title,
+        "",
+        name,
+        "",
+        f"开放日期：{entry.event_date.isoformat()}",
+        f"距离开放：{_schedule_relative_label((entry.event_date - today).days)}",
+    ]
+
+    requirements = entry.payload.get("requirements")
+    if isinstance(requirements, Mapping) and requirements:
+        lines.extend(["", "已确认准入战力："])
+        lines.extend(
+            f"{label}：{format_power(power)}" for label, power in requirements.items()
+        )
+    else:
+        lines.extend(["", "准入战力：暂未获得可靠的正式服数据。"])
+
+    prepare_date = dungeon_prepare_date(entry.event_date)
+    prepare_offset = (prepare_date - today).days
+    if prepare_offset < 0:
+        lines.extend(["", "准备建议：副本今天开放，无需再提前攒次数。"])
+    else:
+        prepare_text = (
+            f"准备建议：{prepare_date.isoformat()} 开始攒副本次数"
+            f"（{_schedule_relative_label(prepare_offset)}）。"
+        )
+        lines.extend(["", prepare_text])
     return "\n".join(lines)
 
 
@@ -953,7 +1049,7 @@ def _format_daily_reminder_item(reminder: Reminder, today: date) -> str:
 def _dungeon_preparation_hint(event_date: date, today: date) -> str:
     """副本开放前 1 天开始攒次数，相对时间基于本轮 check 日期。"""
 
-    days_until_prepare = (event_date - timedelta(days=1) - today).days
+    days_until_prepare = (dungeon_prepare_date(event_date) - today).days
     return f"准备建议：{format_relative_day(days_until_prepare)}开始攒副本次数。"
 
 
