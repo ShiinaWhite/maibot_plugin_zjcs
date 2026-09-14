@@ -2276,3 +2276,33 @@ def test_secret_treasure_large_override_stays_bounded_and_correct() -> None:
     assert overview.next_phase.server_day == 36
     text = format_secret_treasure_overview(overview)
     assert "重点奖励：远期大奖" not in text
+
+
+def test_secret_treasure_high_phase_override_beats_formula_next() -> None:
+    # GPT 复审反例：显式高期号（第 10 期 @ Day 20）早于公式第 3 期（Day 22），
+    # 真正的 next 是第 10 期；候选集必须包含全部显式期次。
+    overview = _overview_with_explicit_phases(
+        [
+            {
+                "phase": 10,
+                "server_day": 20,
+                "name": "秘宝大作战·第10期",
+                "status": "confirmed",
+                "featured_reward": {"name": "确认大奖", "status": "confirmed"},
+            }
+        ],
+        today=date(2026, 7, 4),
+    )
+
+    assert overview.current_server_day == 16
+    assert overview.current_phase is not None
+    assert overview.current_phase.phase == 2
+    assert overview.current_phase.server_day == 15
+    assert overview.next_phase is not None
+    assert overview.next_phase.phase == 10
+    assert overview.next_phase.server_day == 20
+
+    text = format_secret_treasure_overview(overview)
+    assert "下一期：" in text
+    assert "秘宝大作战·第10期" in text
+    assert "开服第 20 天 · 2026-07-08（4 天后）" in text

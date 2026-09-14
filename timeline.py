@@ -851,26 +851,31 @@ def _secret_treasure_occurrence_days(
 ) -> dict[int, int]:
     """生成期次→开服日映射；显式 server_day override 优先于公式。
 
-    终止依据：公式开服日随期号严格递增，因此遇到第一个未被显式覆盖
-    且越过 through_server_day 的公式期次后，其余未覆盖期次必然更晚；
-    全部显式期次均已来自 known_phases，此时候选集即完整且有界。
+    全部显式期次先进入候选集；公式期次按期号递增生成。由于公式开服日
+    随期号严格递增，一旦越过 max(through_server_day, 已找到的最早未来
+    显式期次)，剩余未覆盖期次不可能成为 current/next，可安全停止。
+    显式 override 允许打破“期号顺序 == 时间顺序”，因此高期号的显式
+    期次也可能早于低期号的公式期次，必须全量参与排序。
     """
 
     occurrence_days: dict[int, int] = {}
-    phase_number = 1
-    while True:
-        explicit = explicit_phases.get(phase_number)
-        override = (
-            _positive_int(explicit.get("server_day"))
-            if isinstance(explicit, Mapping)
-            else None
-        )
-        formula_day = first_server_day + (phase_number - 1) * period_days
+    for phase_number, explicit in explicit_phases.items():
+        if not isinstance(explicit, Mapping):
+            continue
+        override = _positive_int(explicit.get("server_day"))
         if override is not None:
             occurrence_days[phase_number] = override
-        else:
+
+    barrier = through_server_day
+    for day in occurrence_days.values():
+        barrier = max(barrier, day)
+
+    phase_number = 1
+    while True:
+        if phase_number not in occurrence_days:
+            formula_day = first_server_day + (phase_number - 1) * period_days
             occurrence_days[phase_number] = formula_day
-            if formula_day > through_server_day:
+            if formula_day > barrier:
                 return occurrence_days
         phase_number += 1
 
