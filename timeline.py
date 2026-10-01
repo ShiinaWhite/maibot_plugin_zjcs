@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 import json
@@ -743,6 +743,198 @@ def _progression_node_entry(
     )
 
 
+def find_next_season(
+    timeline: Mapping[str, Any],
+    *,
+    today: date,
+    open_date: date,
+    season_anchor_dates: Mapping[str, date] | None = None,
+) -> ScheduleEntry | None:
+    """下一赛季严格晚于今天；缺失紧邻赛季的日期时不跳到更远赛季。"""
+
+    anchors = season_anchor_dates or {}
+    progress = build_server_progress(
+        timeline, today=today, open_date=open_date, season_anchor_dates=anchors
+    )
+    seasons = [
+        item
+        for item in _mapping_list(timeline.get("events"))
+        if item.get("type") == "season"
+        and isinstance(item.get("season"), str)
+        and item["season"].startswith("S")
+        and item["season"][1:].isdigit()
+    ]
+    if not seasons:
+        return None
+    if progress.current_season is None:
+        target = min(int(item["season"][1:]) for item in seasons)
+    else:
+        season = progress.current_season
+        if not season.startswith("S") or not season[1:].isdigit():
+            return None
+        target = int(season[1:]) + 1
+    candidates = []
+    for item in seasons:
+        if item["season"] != f"S{target}":
+            continue
+        if item.get("status") not in NOTIFIABLE_STATUSES:
+            continue
+        event_id, name = item.get("id"), item.get("name")
+        if not isinstance(event_id, str) or not event_id:
+            continue
+        if not isinstance(name, str) or not name:
+            continue
+        event_date = calculate_event_date(item, open_date, anchors)
+        if event_date is not None and event_date > today:
+            candidates.append(
+                ScheduleEntry(
+                    event_id=event_id,
+                    category="event",
+                    name=name,
+                    event_date=event_date,
+                    payload={"type": "season", "status": item["status"]},
+                    current_server_day=progress.server_day,
+                )
+            )
+    if not candidates:
+        return None
+    entry = min(candidates, key=lambda item: (item.event_date, item.event_id))
+    return ScheduleEntry(
+        event_id=entry.event_id,
+        category=entry.category,
+        name=entry.name,
+        event_date=entry.event_date,
+        payload={**entry.payload, "season": f"S{target}"},
+        current_server_day=entry.current_server_day,
+    )
+
+
+QUERY_TOPICS = (
+    "next_dungeon",
+    "next_weekly_activity",
+    "next_season",
+    "progress",
+    "secret_treasure",
+    "schedule",
+)
+
+
+def build_query_facts(
+    timeline: Mapping[str, Any],
+    *,
+    query: str,
+    today: date,
+    open_date: date,
+    season_anchor_dates: Mapping[str, date] | None = None,
+    activity_name: str | None = None,
+) -> dict[str, Any]:
+    """自然语言 Tool 的只读事实入口；不生成回复，不读取提醒策略或状态。"""
+
+    if query not in QUERY_TOPICS:
+        raise ValueError("不支持的查询类型")
+    if activity_name is not None and (
+        query != "next_weekly_activity"
+        or activity_name not in WEEKLY_ACTIVITY_POLICY_NAMES
+    ):
+        raise ValueError("活动名称只用于周常查询，且必须是支持的完整名称")
+    result: dict[str, Any] = {
+        "query": query,
+        "as_of": today.isoformat(),
+        "status": "ok",
+        "data": None,
+        "reason": None,
+        "source": {
+            "kind": "local_timeline",
+            "file": "timeline_v1.json",
+            "generated_on": timeline.get("generated_on"),
+        },
+    }
+    if today < open_date:
+        result.update(status="unknown", reason="服务器尚未开服，不能提供当前进度查询。")
+        return result
+    anchors = season_anchor_dates or {}
+
+    def entry_facts(entry: ScheduleEntry | None) -> dict[str, Any] | None:
+        if entry is None:
+            return None
+        facts = asdict(entry)
+        facts["days_until"] = (entry.event_date - today).days
+        if entry.category == "dungeon":
+            prepare_date = dungeon_prepare_date(entry.event_date)
+            facts["prepare_date"] = prepare_date
+            facts["days_until_prepare"] = (prepare_date - today).days
+            facts["requirements_available"] = bool(entry.payload.get("requirements"))
+        elif entry.payload.get("type") == "weekly_side_activity":
+            facts["date_basis"] = "local_rotation_rule"
+            if entry.name == "宾果抽抽乐":
+                facts["minimum_fruit_to_save"] = BINGO_MIN_FRUIT_COUNT
+        return facts
+
+    if query == "next_dungeon":
+        result["data"] = entry_facts(
+            find_next_dungeon(
+                timeline, today=today, open_date=open_date, season_anchor_dates=anchors
+            )
+        )
+    elif query == "next_weekly_activity":
+        result["data"] = entry_facts(
+            find_next_weekly_activity(
+                timeline, today=today, open_date=open_date, activity_name=activity_name
+            )
+        )
+    elif query == "next_season":
+        result["data"] = entry_facts(
+            find_next_season(
+                timeline, today=today, open_date=open_date, season_anchor_dates=anchors
+            )
+        )
+    elif query == "progress":
+        progress = build_server_progress(
+            timeline, today=today, open_date=open_date, season_anchor_dates=anchors
+        )
+        result["data"] = {
+            **asdict(progress),
+            "recent_node": entry_facts(progress.recent_node),
+            "next_node": entry_facts(progress.next_node),
+        }
+    elif query == "secret_treasure":
+        overview = build_secret_treasure_overview(
+            timeline, today=today, open_date=open_date
+        )
+        if overview.current_phase is not None or overview.next_phase is not None:
+            result["data"] = asdict(overview)
+            for key in ("current_phase", "next_phase"):
+                phase = result["data"][key]
+                if (
+                    phase is not None
+                    and phase["reward_mode"] == REWARD_MODE_UNAVAILABLE
+                ):
+                    # 既有查询会保留显式期名；Tool 不将未确认条目的名称作为事实。
+                    phase["name"] = f"秘宝大作战·第{phase['phase']}期"
+    else:
+        entries = build_upcoming_schedule(
+            timeline, today=today, open_date=open_date, season_anchor_dates=anchors
+        )
+        result["data"] = {
+            "horizon_days": SCHEDULE_HORIZON_DAYS,
+            "end_date": today + timedelta(days=SCHEDULE_HORIZON_DAYS - 1),
+            "entries": [entry_facts(entry) for entry in entries],
+        }
+    if result["data"] is None:
+        result.update(
+            status="unknown",
+            reason="当前本地时间线没有可可靠计算的结果；数据或赛季锚点可能缺失，不推测日期。",
+        )
+    # 仅对已筛选的查询数据做日期序列化；不向 LLM 暴露原始时间线中的 pending 字段。
+    return json.loads(json.dumps(result, ensure_ascii=False, default=_query_date_json))
+
+
+def _query_date_json(value: object) -> str:
+    if isinstance(value, date):
+        return value.isoformat()
+    raise TypeError("查询事实中包含无法序列化的数据")
+
+
 def format_server_progress(progress: ServerProgress) -> str:
     title = "【杖剑助手 · 服务器进度】"
     lines = [
@@ -916,6 +1108,7 @@ def find_next_weekly_activity(
     *,
     today: date,
     open_date: date,
+    activity_name: str | None = None,
 ) -> ScheduleEntry | None:
     """查询今天起（含今天）的下一项每周轮换活动；只读、与提醒策略无关。"""
 
@@ -939,6 +1132,21 @@ def find_next_weekly_activity(
                 first_server_day
                 + ((delta + period_days - 1) // period_days) * period_days
             )
+
+    if activity_name is not None:
+        # 最多检查一轮；同名活动也按最早出现的日期返回。
+        for offset in range(len(rotation)):
+            candidate_day = target_server_day + offset * period_days
+            if (
+                _weekly_rotation_name(
+                    candidate_day, first_server_day, period_days, rotation
+                )
+                == activity_name
+            ):
+                target_server_day = candidate_day
+                break
+        else:
+            return None
 
     return ScheduleEntry(
         event_id=f"weekly_side_activity_{target_server_day}",

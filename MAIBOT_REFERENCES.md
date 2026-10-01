@@ -16,6 +16,18 @@
 
 目标解析策略：**优先复用已有 group stream，不存在时才 `open_session`**；`group_id` 是稳定配置身份，`stream_id` 是运行时标识，二者不混用。
 
+## 自然语言 Tool API（2026-10-01 本地核验）
+
+本次事实来源：本地 MaiBot `dev` commit `41406c8edf5a2b9f8041652835b236ed40aba513`，其 `.venv` 中 `maibot-plugin-sdk 2.8.0`。这是开发环境核验，不代表生产 Core 的版本已被重新确认；未修改 Core。
+
+- SDK `maibot_sdk/components.py`：`Tool(..., parameters=list[ToolParameterInfo], **metadata)` 声明组件，默认调用方法 `plugin.invoke_tool`。
+- SDK `maibot_sdk/types.py`：`ToolParameterInfo`、`ToolParamType` 支持类型、必填和枚举；二者从 `maibot_sdk.types` 导入，`Tool` 从 `maibot_sdk` 导入。
+- Core `src/plugin_runtime/component_query.py`：未声明可见性时为 `deferred`；`visibility="visible"` 可进入首轮 LLM 工具列表。参数会规范化为对象级 JSON Schema。
+- `PluginToolProvider → ComponentQueryService.invoke_tool_as_tool → supervisor → runner plugin.invoke_tool` 将 LLM 调用传到插件 handler；handler 接受 `**kwargs` 以容纳 Host 注入的聊天上下文。
+- Core 对字典结果读取 `success` / `content`，同时保留原始字典为 `structured_content`。插件返回 JSON 文本 `content` 与结构化 `facts`，未知业务结果与执行错误分别处理。
+- 当前 Host 对 `user_id` / `group_id` 等字段仅在模型参数为空时补充，并无独立管理员认证对象；这些字段不能用来实现安全管理员授权。`command.admin_qqs` 不会自动作用于 Tool。
+- Tool 声明不要求新增 manifest capability；本工具只读插件本地时间线和现有内存配置，没有新增 `ctx.*` 能力调用。现有 manifest SDK 范围覆盖已验证的 2.8.0。
+
 ## 1. 定时任务与插件生命周期
 
 仓库：

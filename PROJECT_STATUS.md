@@ -4,6 +4,8 @@
 
 ## 当前阶段
 
+开发增量（2026-10-01）：`feat/maibot-query-tools` 新增自然语言只读事实 Tool `zjcs_query`，供 MaiBot 查询副本、指定周常、下一赛季、进度、秘宝和日程。该增量等待外部 Review，未合并 main、未创建发布、未部署生产；manifest/config/state 版本保持 `0.1.12` / `1.4.0` / `2`。接口与权限边界见 [README](README.md#自然语言只读工具feature-分支待外部-review)。
+
 **当前正式生产版本为 0.1.12（commit `27d1db8`），已于 2026-09-15 完成生产部署与技术验收。**
 
 0.1.6～0.1.10 新增了群内主动查询能力（日程 / 副本 / 进度 / 秘宝 / 活动），0.1.11 完成时间线数据一致性与抗坏数据 hardening，0.1.12 为最终 Release Candidate 收口；以上均已通过外部 Review 并进入生产。
