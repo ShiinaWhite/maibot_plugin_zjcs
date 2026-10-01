@@ -1058,6 +1058,7 @@ def test_config_schema_is_chinese_and_multi_group_ready() -> None:
         "每日调度",
         "提醒时间",
         "指令设置",
+        "赛季准备提醒",
     ]
     expected_labels = {
         "plugin": {"enabled": "启用杖剑助手", "config_version": "配置版本"},
@@ -1138,7 +1139,7 @@ def test_config_schema_reminders_are_single_integers_with_zero_hint() -> None:
 def test_config_defaults_match_v1_4_production_policy() -> None:
     config = plugin.ZjcsGuildNotifierConfig()
 
-    assert config.plugin.config_version == "1.4.0"
+    assert config.plugin.config_version == "1.5.0"
     assert config.target.group_ids == []
     assert config.reminders.dungeon_remind_day == 1
     assert config.reminders.secret_treasure_remind_day == 2
@@ -1182,7 +1183,7 @@ def test_v1_2_0_config_migrates_to_v1_4_0_idempotently() -> None:
     rebuilt, changed = instance.normalize_plugin_config(v1_2_config)
 
     assert changed is True
-    assert rebuilt["plugin"]["config_version"] == "1.4.0"
+    assert rebuilt["plugin"]["config_version"] == "1.5.0"
     assert rebuilt["command"] == {"admin_qqs": []}
     # 原有配置全部保留。
     assert rebuilt["target"] == {"group_ids": ["123456"]}
@@ -1211,7 +1212,7 @@ def test_v1_3_0_single_admin_migrates_to_admin_qqs_list() -> None:
         rebuilt, changed = instance.normalize_plugin_config(v1_3_config)
 
         assert changed is True
-        assert rebuilt["plugin"]["config_version"] == "1.4.0"
+        assert rebuilt["plugin"]["config_version"] == "1.5.0"
         assert rebuilt["command"] == {"admin_qqs": expected_admin_qqs}
         assert "admin_qq" not in rebuilt["command"]
         assert rebuilt["target"] == {"group_ids": ["123456"]}
@@ -1237,7 +1238,7 @@ def test_v1_3_0_admin_survives_host_rebuild_then_plugin_normalize(
     )
     assert "admin_qq" not in rebuilt["command"]
     assert rebuilt["command"] == {"admin_qqs": []}
-    assert rebuilt["plugin"]["config_version"] == "1.4.0"
+    assert rebuilt["plugin"]["config_version"] == "1.5.0"
 
     # 磁盘上仍是 1.3.0 原始配置，插件 normalize 经 CONFIG_PATH 补取旧管理员。
     config_path = tmp_path / "config.toml"
@@ -1251,7 +1252,7 @@ def test_v1_3_0_admin_survives_host_rebuild_then_plugin_normalize(
     migrated, changed = instance.normalize_plugin_config(rebuilt)
 
     assert changed is True
-    assert migrated["plugin"]["config_version"] == "1.4.0"
+    assert migrated["plugin"]["config_version"] == "1.5.0"
     assert migrated["command"] == {"admin_qqs": ["100"]}
     assert "admin_qq" not in migrated["command"]
 
@@ -1283,7 +1284,7 @@ def test_v1_3_0_empty_admin_host_rebuild_stays_empty(tmp_path, monkeypatch) -> N
     migrated, changed = instance.normalize_plugin_config(rebuilt)
 
     assert changed is False
-    assert migrated["plugin"]["config_version"] == "1.4.0"
+    assert migrated["plugin"]["config_version"] == "1.5.0"
     assert migrated["command"] == {"admin_qqs": []}
     assert "admin_qq" not in migrated["command"]
 
@@ -1762,7 +1763,7 @@ def test_v1_config_upgrade_migrates_anchors_groups_and_drops_obsolete_fields(
     rebuilt, changed = instance.normalize_plugin_config(prepared)
 
     assert changed is True
-    assert rebuilt["plugin"] == {"enabled": True, "config_version": "1.4.0"}
+    assert rebuilt["plugin"] == {"enabled": True, "config_version": "1.5.0"}
     assert rebuilt["target"] == {"group_ids": ["611817038"]}
     assert rebuilt["server"] == {"open_date": "2026-06-19"}
     assert "remind_days_before" not in rebuilt["schedule"]
@@ -1840,7 +1841,7 @@ def test_v1_1_config_upgrade_migrates_group_and_max_remind_day(
     rebuilt, changed = instance.normalize_plugin_config(prepared)
 
     assert changed is True
-    assert rebuilt["plugin"] == {"enabled": True, "config_version": "1.4.0"}
+    assert rebuilt["plugin"] == {"enabled": True, "config_version": "1.5.0"}
     assert rebuilt["target"] == {"group_ids": ["611817038"]}
     assert rebuilt["reminders"] == {
         "dungeon_remind_day": 1,

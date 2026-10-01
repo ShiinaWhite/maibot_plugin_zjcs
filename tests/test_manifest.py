@@ -27,4 +27,4 @@ def test_manifest_declares_project_author(manifest) -> None:
 
 
 def test_manifest_version_is_bumped_for_release_candidate(manifest) -> None:
-    assert manifest["version"] == "0.2.0"
+    assert manifest["version"] == "0.3.0"

@@ -4,36 +4,24 @@
 
 ## 当前阶段
 
-**仓库当前候选版本为 0.2.0 RC，正式生产仍为 0.1.12。**
+**DEV 开发候选为 0.3.0，等待外部 Review，未合入 main、未部署。**
 
-自然语言只读事实 Tool `zjcs_query` 的 feature commit `b722e123739b2c8be286b5f95fcbc161e441aa83` 已通过外部 Review，并以独立 merge commit 合入 main。0.2.0 仅收口该功能、版本、文档及受控运行时验收，不增加其他业务功能；config `1.4.0` 与 notification state `2` 保持兼容，无迁移。接口与权限边界见 [README](README.md#自然语言只读工具020-rc)。
+基于远程 main `d2bf4d480b5911cac43faeb91edad59ddb1a62df`，新增按本服确认 datetime 调度的赛季前 36 小时准备提醒，并完善既有 `zjcs_query / next_dungeon` 的副本战力口语描述。没有加入其他业务功能。config 升为 `1.5.0`，SDK 补齐默认空时刻列表，旧设置保留；state 保持 `2`，不迁移或清空历史 keys。
 
-本轮未部署生产、未重启服务、未创建正式 Release；0.2.0 RC 等待下一轮外部 Review。
+本轮按操作者要求删除旧开发分支 `feat/maibot-query-tools` 的本地与远程引用；所有开发仅在 `DEV`。未创建 Release 或 tag，未连接生产 QQ，MaiBot Core 只读。
 
-**当前正式生产版本为 0.1.12（commit `27d1db8`），已于 2026-09-15 完成生产部署与技术验收。**
-
-0.1.6～0.1.10 新增了群内主动查询能力（日程 / 副本 / 进度 / 秘宝 / 活动），0.1.11 完成时间线数据一致性与抗坏数据 hardening，0.1.12 为最终 Release Candidate 收口；以上均已通过外部 Review 并进入生产。
+设计、事实依据与受控 Runner / LLM 结果见 [DEV 验收记录](docs/DEV_VALIDATION.md)。
 
 ## 生产版本事实
 
-- production code commit：`27d1db80bf700120f7835042d79f7d63422d76fe`
-- plugin version：`0.1.12`（显示名「杖剑助手」，plugin id `zjcs.guild-notifier`）
+以下为操作者在本轮任务提供的当前基线，本轮没有重新连接生产验证：
+
+- main / production commit：`d2bf4d480b5911cac43faeb91edad59ddb1a62df`
+- plugin version：`0.2.0`，plugin id `zjcs.guild-notifier`
 - config version：`1.4.0`
 - notification state version：`2`
 
-0.1.5 已于 2026-09-14 完成生产部署（5 个生产发布文件按 Git blob 字节部署并逐文件校验一致；timeline.py 的 event_date 绝对日历事件支持上线）。0.1.12 已于 2026-09-15 完成生产部署并验收：Core recreate 后 healthy，Extension Runner 加载插件成功且失败为 0，live 五文件与 commit blob byte-equal；生产 config 与 notification state 在部署前后 hash 不变；无 config/state migration；部署期间没有额外正式提醒发送；NapCat 未重启；回滚 target 为 f3ca28f（0.1.5）。
-
-生产 reminders 实际配置为：dungeon=2、secret_treasure=1、bingo=4、scratch=1、fenek=1、event=1。
-
-非人哉联动（event_date 2026-09-24）已进入生产时间线；按生产 event_remind_day=1，自然提醒窗口为 **2026-09-23 09:00**（提醒正文「1 天后 · 2026-09-24」），尚未完成自然生产观察。
-
-生产 QQ 人工验收（`/杖剑传说` 帮助确认与 `/杖剑传说 日程` 抽查）尚未执行，等待操作者方便时进行。
-
-## Release Candidate 状态
-
-- **0.2.0 RC：自然语言只读 Tool 收口；候选验收记录见 [docs/RC_0.2.0_VALIDATION.md](docs/RC_0.2.0_VALIDATION.md)。未部署生产、未创建正式 Release。**
-- **0.1.12：已于 2026-09-15 部署生产并完成技术验收（通过外部部署候选 Review 与生产部署验收 Review）。**
-- 概括：0.1.6～0.1.10 新增群内主动查询（`/杖剑传说 日程`、`/杖剑传说 副本`、`/杖剑传说 进度`、`/杖剑传说 秘宝`、`/杖剑传说 活动`），全部为只读查询、不写通知状态、不依赖提醒提前天数；0.1.11 完成时间线数据一致性与抗坏数据 hardening（日期模型互斥、ID/来源/期次审计、发布前 integrity gate）。
+旧部署与 RC 文档保留为历史记录，不能将其中的 0.1.12 生产状态视为当前状态。此次开发不改变生产配置、state 或 reminders。
 
 ## V1.2 能力摘要
 

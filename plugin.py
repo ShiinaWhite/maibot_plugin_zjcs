@@ -19,6 +19,9 @@ try:
     from .state import NotificationState, StateFileError
     from .timeline import (
         build_query_facts,
+        build_season_preparations,
+        format_season_preparation,
+        SeasonPreparation,
         build_reminders,
         build_secret_treasure_overview,
         build_server_progress,
@@ -46,6 +49,9 @@ except ImportError:
     from state import NotificationState, StateFileError
     from timeline import (
         build_query_facts,
+        build_season_preparations,
+        format_season_preparation,
+        SeasonPreparation,
         build_reminders,
         build_secret_treasure_overview,
         build_server_progress,
@@ -78,8 +84,8 @@ SEND_RETRY_DELAYS_SECONDS = (1.0, 3.0, 5.0)
 LEGACY_REMIND_DAYS_DEFAULT = (2, 1)
 LEGACY_CONFIG_VERSIONS = frozenset({"1.0.0", "1.1.0"})
 DISK_FALLBACK_CONFIG_VERSIONS = LEGACY_CONFIG_VERSIONS | {"1.3.0"}
-PREVIOUS_CONFIG_VERSIONS = frozenset({"1.2.0", "1.3.0"})
-CURRENT_CONFIG_VERSION = "1.4.0"
+PREVIOUS_CONFIG_VERSIONS = frozenset({"1.2.0", "1.3.0", "1.4.0"})
+CURRENT_CONFIG_VERSION = "1.5.0"
 COMMAND_PATTERN = r"^/(?:杖剑传说|zjcs)(?:\s+(?P<sub>\S+))?\s*$"
 COMMAND_DENIED_MESSAGE = "你没有权限使用杖剑助手指令。"
 TEST_GROUP_ONLY_MESSAGE = "测试指令只能在 QQ 群中使用。"
@@ -307,6 +313,45 @@ class CommandConfig(PluginConfigBase):
     )
 
 
+class SeasonStartConfig(PluginConfigBase):
+    season: str = Field(
+        description="赛季名，例如 S3。重复赛季记录不生成提醒。",
+        json_schema_extra={"label": "赛季"},
+        default="",
+    )
+    start_datetime: str = Field(
+        default="",
+        description="本服已确认开启时间，ISO 8601 格式，必须带时区偏移。",
+        json_schema_extra={
+            "label": "开启时间",
+            "placeholder": "2026-10-10T08:00:00+08:00",
+        },
+    )
+
+
+class SeasonPreparationConfig(PluginConfigBase):
+    """Only explicitly confirmed instants enable precise season reminders."""
+
+    __ui_label__ = "赛季准备提醒"
+    __ui_icon__ = "clock"
+    __ui_order__ = 7
+
+    enabled: bool = Field(
+        default=True,
+        description="独立开启赛季前 36 小时囤经验建议；未填写可靠开启时间时不提醒。",
+        json_schema_extra={"label": "启用赛季准备提醒"},
+    )
+    start_times: list[SeasonStartConfig] = Field(
+        default_factory=list,
+        description=(
+            "仅填写已确认的本公会服务器赛季开启时间，每条含 season 与 start_datetime，必须包含时区偏移。"
+            "例如 S3 / 2026-10-10T08:00:00+08:00；留空、无时区或与现有赛季日期冲突时不提醒。"
+            "示例不是所有赛季固定 08:00 的规则。"
+        ),
+        json_schema_extra={"label": "已确认赛季开启时间"},
+    )
+
+
 class ZjcsGuildNotifierConfig(PluginConfigBase):
     plugin: PluginSectionConfig = Field(default_factory=PluginSectionConfig)
     target: TargetConfig = Field(default_factory=TargetConfig)
@@ -315,6 +360,9 @@ class ZjcsGuildNotifierConfig(PluginConfigBase):
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     reminders: ReminderTimesConfig = Field(default_factory=ReminderTimesConfig)
     command: CommandConfig = Field(default_factory=CommandConfig)
+    season_preparation: SeasonPreparationConfig = Field(
+        default_factory=SeasonPreparationConfig
+    )
 
 
 @dataclass(frozen=True)
@@ -332,6 +380,7 @@ class ZjcsGuildNotifier(MaiBotPlugin):
     def __init__(self) -> None:
         super().__init__()
         self._daily_task: asyncio.Task[None] | None = None
+        self._season_sent_in_process: set[tuple[str, str]] = set()
         self._logger = logging.getLogger(PLUGIN_ID)
         self._legacy_state_group_id: str | None = None
 
@@ -342,7 +391,8 @@ class ZjcsGuildNotifier(MaiBotPlugin):
 
         V1.0：赛季锚点和统一提醒策略；V1.1：单目标群和列表提醒天数；
         V1.2 → V1.4：新增指令设置；V1.3 单管理员 admin_qq 迁移为
-        admin_qqs 列表。Host 升级重建丢弃的旧字段按需从磁盘补取。
+        admin_qqs 列表；V1.4 → V1.5 新增默认空的精确赛季时刻列表。
+        Host 升级重建丢弃的旧字段按需从磁盘补取。
         """
 
         migrated = (
@@ -414,6 +464,8 @@ class ZjcsGuildNotifier(MaiBotPlugin):
         description=(
             "查询《杖剑传说》本公会服务器的可靠事实：下一个副本、宾果/刮刮乐/菲涅克、"
             "下一赛季更新时间、开服/赛季进度、秘宝奖励、近期活动日程。"
+            "下个本门槛多少、要多少战力、几战力能进、副本需求战力/准入战力都用 next_dungeon；"
+            "其 requirements 按难度提供已确认战力，缺失难度不猜，不代表推荐通关战力。"
             "返回结构化事实供你组织回复；unknown/null 表示不知道，不得猜测。"
             "副本/周常含今天，下一赛季严格晚于今天；日期精度为自然日。"
             "日程只表示未来14天开启/换期，不表示持续或结束时间。"
@@ -422,6 +474,7 @@ class ZjcsGuildNotifier(MaiBotPlugin):
         ),
         detailed_description=(
             "只读本地时间线及已配置服务器日期，不发送消息。"
+            "口语中的下个本/下个副本门槛/战力要求属于 next_dungeon，复用 requirements。"
             "next_dungeon 与 next_weekly_activity 包含今天；next_season 严格晚于今天。"
             "activity 仅供 next_weekly_activity 指定活动，省略时查下一项轮换活动。"
             "schedule 为含今天的未来14天开启/换期日程，不表示活动持续时间。"
@@ -435,7 +488,8 @@ class ZjcsGuildNotifier(MaiBotPlugin):
                 name="query",
                 param_type=ToolParamType.STRING,
                 description=(
-                    "next_dungeon=下一个副本；next_weekly_activity=下一次周常；"
+                    "next_dungeon=下一个副本时间、门槛、战力需求、几战力能进（requirements 按难度）；"
+                    "next_weekly_activity=下一次周常；"
                     "next_season=下一赛季；progress=进度；"
                     "secret_treasure=秘宝；schedule=近期日程。"
                 ),
@@ -732,7 +786,9 @@ class ZjcsGuildNotifier(MaiBotPlugin):
                     check_time,
                     tzinfo=timezone,
                 )
-                continue
+
+            retry_until = await self._run_season_preparation_check()
+            now = datetime.now(timezone)
 
             if next_run is None:
                 next_run = datetime.combine(
@@ -741,7 +797,103 @@ class ZjcsGuildNotifier(MaiBotPlugin):
                     tzinfo=timezone,
                 )
             delay = max((next_run - now).total_seconds(), 0.1)
+            preparations = self._configured_season_preparations()
+            for item in preparations:
+                seconds = item.remind_at.timestamp() - now.timestamp()
+                if seconds > 0:
+                    delay = min(delay, seconds)
+            if retry_until is not None:
+                remaining = retry_until.timestamp() - now.timestamp()
+                if remaining > 0:
+                    # Retry only unfinished work, never beyond its active window.
+                    delay = min(delay, 60.0, remaining)
             await asyncio.sleep(delay)
+
+    def _configured_season_preparations(self) -> list[SeasonPreparation]:
+        config = self.config
+        if not config.plugin.enabled or not config.season_preparation.enabled:
+            return []
+        entries = config.season_preparation.start_times
+        if not entries:
+            return []
+        try:
+            timezone, _ = self._validated_schedule()
+            open_date, anchors = self._configured_timeline_dates()
+            return build_season_preparations(
+                load_timeline(TIMELINE_PATH),
+                open_date=open_date,
+                season_anchor_dates=anchors,
+                start_datetimes={
+                    entry.season: entry.start_datetime
+                    for entry in entries
+                    if sum(other.season == entry.season for other in entries) == 1
+                },
+                calendar_timezone=timezone,
+            )
+        except (OSError, TypeError, ValueError, RuntimeError) as exc:
+            self._logger.error("赛季准备时刻配置无效，跳过精确提醒：%s", exc)
+            return []
+
+    async def _run_season_preparation_check(self) -> datetime | None:
+        """Return the earliest expiry of work still needing a retry, if any."""
+        preparations = self._configured_season_preparations()
+        if not preparations:
+            return
+        timezone, _ = self._validated_schedule()
+        due = [item for item in preparations if item.is_due(datetime.now(timezone))]
+        group_ids = _normalized_group_ids(self.config.target.group_ids)
+        if not due or not group_ids:
+            return
+        state = NotificationState(
+            Path(self.ctx.paths.data_dir) / NotificationState.FILE_NAME
+        )
+        try:
+            state.load()
+        except StateFileError as exc:
+            self._logger.error("赛季准备通知状态读取失败，跳过发送：%s", exc)
+            active = [item for item in due if item.is_due(datetime.now(timezone))]
+            return min(
+                (item.starts_at for item in active),
+                key=lambda value: value.timestamp(),
+                default=None,
+            )
+        for item in due:
+            key = item.notification_key
+            for group_id in group_ids:
+                identity = (group_id, key)
+                if state.contains(group_id, key):
+                    continue
+                now = datetime.now(timezone)
+                if not item.is_due(now):
+                    break
+                if identity not in self._season_sent_in_process:
+                    message = format_season_preparation(item, now=now)
+                    if not await self._send_text_with_retry(
+                        message, group_id, expires_at=item.starts_at
+                    ):
+                        continue
+                    # Remember confirmed sends even if persisting fails. Subsequent
+                    # ticks retry the state write rather than resend in this process.
+                    self._season_sent_in_process.add(identity)
+                try:
+                    state.mark_sent_many(group_id, [key])
+                except StateFileError as exc:
+                    self._logger.error("赛季准备通知已发送但状态写入失败：%s", exc)
+
+        now = datetime.now(timezone)
+        return min(
+            (
+                item.starts_at
+                for item in due
+                if item.is_due(now)
+                and any(
+                    not state.contains(group_id, item.notification_key)
+                    for group_id in group_ids
+                )
+            ),
+            key=lambda value: value.timestamp(),
+            default=None,
+        )
 
     async def _run_daily_check(self, *, today: date) -> None:
         try:
@@ -938,14 +1090,28 @@ class ZjcsGuildNotifier(MaiBotPlugin):
         )
         return format_next_weekly_activity(entry, today=today)
 
-    async def _send_text_with_retry(self, message: str, group_id: str) -> bool:
+    async def _send_text_with_retry(
+        self, message: str, group_id: str, *, expires_at: datetime | None = None
+    ) -> bool:
         """有限重试一条消息，并在每次 retry 前重新解析目标群 stream。"""
 
         total_attempts = len(SEND_RETRY_DELAYS_SECONDS) + 1
         previous_stream_id: str | None = None
         for attempt in range(total_attempts):
+            if (
+                expires_at is not None
+                and datetime.now(expires_at.tzinfo).timestamp()
+                >= expires_at.timestamp()
+            ):
+                return False
             if attempt:
                 await asyncio.sleep(SEND_RETRY_DELAYS_SECONDS[attempt - 1])
+                if (
+                    expires_at is not None
+                    and datetime.now(expires_at.tzinfo).timestamp()
+                    >= expires_at.timestamp()
+                ):
+                    return False
 
             try:
                 target = await self._resolve_group_stream(group_id)
@@ -978,6 +1144,12 @@ class ZjcsGuildNotifier(MaiBotPlugin):
                 target.has_scope,
             )
             try:
+                if (
+                    expires_at is not None
+                    and datetime.now(expires_at.tzinfo).timestamp()
+                    >= expires_at.timestamp()
+                ):
+                    return False
                 result = await self.ctx.send.text(
                     message,
                     target.stream_id,
@@ -1155,6 +1327,7 @@ def _migrate_config_version(
 
     1.2.0 → 1.4.0 仅新增 command 配置节（默认空管理员列表）；
     1.3.0 → 1.4.0 把单管理员 admin_qq 迁移为 admin_qqs 列表并删除旧字段。
+    1.4.0 → 1.5.0 由 SDK 补入赛季准备配置，默认时刻表为空，不发送新提醒。
     Host 升级重建先于本迁移执行，会丢弃不在新 schema 中的 admin_qq，
     因此必要时从磁盘旧配置恢复：仅在 admin_qqs 尚无非空值时回填。
     """

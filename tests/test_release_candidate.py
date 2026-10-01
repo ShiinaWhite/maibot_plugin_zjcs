@@ -173,5 +173,5 @@ def test_rc_version_contract() -> None:
         )
     )
 
-    assert manifest["version"] == "0.2.0"
+    assert manifest["version"] == "0.3.0"
     assert manifest["id"] == "zjcs.guild-notifier"

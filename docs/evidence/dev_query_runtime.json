@@ -1,0 +1,482 @@
+{
+  "core_commit": "41406c8edf5a2b9f8041652835b236ed40aba513",
+  "sdk_version": "2.8.0",
+  "plugin_version": "0.3.0",
+  "plugin_sha256": {
+    "_manifest.json": "4d3658c2adb8698d4c37bc9bb46dc95423a3eea2357a29d5806c4c5195197fef",
+    "plugin.py": "fce9e79238aae335721fdb20270a5a4c6eb6e3060cd46b98b1cf0be2142542ff",
+    "timeline.py": "3ec5bbe9caba7d5d19e115d95e61878d718c4d327671e30215cbe3fe86259edf",
+    "state.py": "2fde57e47d0576a052f5a6e7644f05c2fa224c7a22ac84994c08d9cd161997f0",
+    "timeline_v1.json": "8ef84cf85ee79376941f59cb9c349afd8df8601d1f47baed06f20cfd50fba7be"
+  },
+  "test_date": "2026-10-01",
+  "test_open_date": "2026-07-06",
+  "test_season_start": "2026-10-27T08:00:00+08:00",
+  "runner": "passed",
+  "rpc": [
+    {
+      "arguments": {
+        "query": "next_dungeon"
+      },
+      "status": "passed",
+      "facts": {
+        "query": "next_dungeon",
+        "as_of": "2026-10-01",
+        "status": "ok",
+        "data": {
+          "event_id": "immortal_sea_ark",
+          "category": "dungeon",
+          "name": "仙海云舟",
+          "event_date": "2026-10-12",
+          "payload": {
+            "region": "龙之国",
+            "requirements": {
+              "普通": 16500000,
+              "困难": 20000000,
+              "噩梦": 24500000,
+              "炼狱": 40000000
+            },
+            "status": "confirmed"
+          },
+          "current_server_day": 88,
+          "days_until": 11,
+          "prepare_date": "2026-10-11",
+          "days_until_prepare": 10,
+          "requirements_available": true
+        },
+        "reason": null,
+        "source": {
+          "kind": "local_timeline",
+          "file": "timeline_v1.json",
+          "generated_on": "2026-09-14"
+        },
+        "timezone": "Asia/Shanghai"
+      }
+    },
+    {
+      "arguments": {
+        "query": "next_weekly_activity",
+        "activity": "宾果抽抽乐"
+      },
+      "status": "passed",
+      "facts": {
+        "query": "next_weekly_activity",
+        "as_of": "2026-10-01",
+        "status": "ok",
+        "data": {
+          "event_id": "weekly_side_activity_99",
+          "category": "activity",
+          "name": "宾果抽抽乐",
+          "event_date": "2026-10-12",
+          "payload": {
+            "type": "weekly_side_activity",
+            "server_day": 99
+          },
+          "current_server_day": 88,
+          "days_until": 11,
+          "date_basis": "local_rotation_rule",
+          "minimum_fruit_to_save": 20
+        },
+        "reason": null,
+        "source": {
+          "kind": "local_timeline",
+          "file": "timeline_v1.json",
+          "generated_on": "2026-09-14"
+        },
+        "timezone": "Asia/Shanghai"
+      }
+    },
+    {
+      "arguments": {
+        "query": "next_season"
+      },
+      "status": "passed",
+      "facts": {
+        "query": "next_season",
+        "as_of": "2026-10-01",
+        "status": "ok",
+        "data": {
+          "event_id": "season_s3_start",
+          "category": "event",
+          "name": "S3 羽之国开启",
+          "event_date": "2026-10-27",
+          "payload": {
+            "type": "season",
+            "status": "confirmed",
+            "season": "S3"
+          },
+          "current_server_day": 88,
+          "days_until": 26
+        },
+        "reason": null,
+        "source": {
+          "kind": "local_timeline",
+          "file": "timeline_v1.json",
+          "generated_on": "2026-09-14"
+        },
+        "timezone": "Asia/Shanghai"
+      }
+    },
+    {
+      "arguments": {
+        "query": "progress"
+      },
+      "status": "passed",
+      "facts": {
+        "query": "progress",
+        "as_of": "2026-10-01",
+        "status": "ok",
+        "data": {
+          "today": "2026-10-01",
+          "open_date": "2026-07-06",
+          "server_day": 88,
+          "current_season": "S2",
+          "season_start_date": "2026-08-21",
+          "season_day": 42,
+          "recent_node": {
+            "event_id": "dragon_relic_2",
+            "category": "event",
+            "name": "龙国第二期遗物：道衍天机",
+            "event_date": "2026-09-21",
+            "payload": {
+              "type": "relic_pool",
+              "status": "confirmed"
+            },
+            "current_server_day": 88,
+            "days_until": -10
+          },
+          "next_node": {
+            "event_id": "bamboo_immortal",
+            "category": "event",
+            "name": "新幻兽：竹林仙君",
+            "event_date": "2026-10-05",
+            "payload": {
+              "type": "phantom_beast",
+              "status": "confirmed"
+            },
+            "current_server_day": 88,
+            "days_until": 4
+          }
+        },
+        "reason": null,
+        "source": {
+          "kind": "local_timeline",
+          "file": "timeline_v1.json",
+          "generated_on": "2026-09-14"
+        },
+        "timezone": "Asia/Shanghai"
+      }
+    },
+    {
+      "arguments": {
+        "query": "secret_treasure"
+      },
+      "status": "passed",
+      "facts": {
+        "query": "secret_treasure",
+        "as_of": "2026-10-01",
+        "status": "ok",
+        "data": {
+          "today": "2026-10-01",
+          "current_server_day": 88,
+          "current_phase": {
+            "phase": 12,
+            "server_day": 85,
+            "event_date": "2026-09-28",
+            "name": "秘宝大作战·第12期",
+            "payload": {
+              "phase": 12,
+              "featured_reward": {
+                "name": "原初宝石",
+                "category": "special_relic",
+                "status": "confirmed"
+              }
+            },
+            "reward_mode": "explicit"
+          },
+          "next_phase": {
+            "phase": 13,
+            "server_day": 92,
+            "event_date": "2026-10-05",
+            "name": "秘宝大作战·第13期",
+            "payload": {
+              "phase": 13,
+              "featured_reward": {
+                "name": "自选奇迹遗物箱·龙Ⅱ（道衍天机）",
+                "category": "relic_selector",
+                "status": "confirmed"
+              }
+            },
+            "reward_mode": "explicit"
+          }
+        },
+        "reason": null,
+        "source": {
+          "kind": "local_timeline",
+          "file": "timeline_v1.json",
+          "generated_on": "2026-09-14"
+        },
+        "timezone": "Asia/Shanghai"
+      }
+    },
+    {
+      "arguments": {
+        "query": "schedule"
+      },
+      "status": "passed",
+      "facts": {
+        "query": "schedule",
+        "as_of": "2026-10-01",
+        "status": "ok",
+        "data": {
+          "horizon_days": 14,
+          "end_date": "2026-10-14",
+          "entries": [
+            {
+              "event_id": "secret_treasure_13",
+              "category": "activity",
+              "name": "秘宝大作战·第13期",
+              "event_date": "2026-10-05",
+              "payload": {
+                "phase": 13,
+                "featured_reward": {
+                  "name": "自选奇迹遗物箱·龙Ⅱ（道衍天机）",
+                  "category": "relic_selector",
+                  "status": "confirmed"
+                }
+              },
+              "current_server_day": 88,
+              "days_until": 4
+            },
+            {
+              "event_id": "weekly_side_activity_92",
+              "category": "activity",
+              "name": "菲涅克的谜题",
+              "event_date": "2026-10-05",
+              "payload": {
+                "type": "weekly_side_activity"
+              },
+              "current_server_day": 88,
+              "days_until": 4,
+              "date_basis": "local_rotation_rule"
+            },
+            {
+              "event_id": "bamboo_immortal",
+              "category": "event",
+              "name": "新幻兽：竹林仙君",
+              "event_date": "2026-10-05",
+              "payload": {
+                "type": "phantom_beast",
+                "status": "confirmed"
+              },
+              "current_server_day": 88,
+              "days_until": 4
+            },
+            {
+              "event_id": "immortal_sea_ark",
+              "category": "dungeon",
+              "name": "仙海云舟",
+              "event_date": "2026-10-12",
+              "payload": {
+                "region": "龙之国",
+                "requirements": {
+                  "普通": 16500000,
+                  "困难": 20000000,
+                  "噩梦": 24500000,
+                  "炼狱": 40000000
+                },
+                "status": "confirmed"
+              },
+              "current_server_day": 88,
+              "days_until": 11,
+              "prepare_date": "2026-10-11",
+              "days_until_prepare": 10,
+              "requirements_available": true
+            },
+            {
+              "event_id": "secret_treasure_14",
+              "category": "activity",
+              "name": "秘宝大作战·第14期",
+              "event_date": "2026-10-12",
+              "payload": {
+                "phase": 14,
+                "featured_reward": {
+                  "name": "幸运神像",
+                  "category": "special_relic",
+                  "status": "confirmed"
+                }
+              },
+              "current_server_day": 88,
+              "days_until": 11
+            },
+            {
+              "event_id": "weekly_side_activity_99",
+              "category": "activity",
+              "name": "宾果抽抽乐",
+              "event_date": "2026-10-12",
+              "payload": {
+                "type": "weekly_side_activity"
+              },
+              "current_server_day": 88,
+              "days_until": 11,
+              "date_basis": "local_rotation_rule",
+              "minimum_fruit_to_save": 20
+            }
+          ]
+        },
+        "reason": null,
+        "source": {
+          "kind": "local_timeline",
+          "file": "timeline_v1.json",
+          "generated_on": "2026-09-14"
+        },
+        "timezone": "Asia/Shanghai"
+      }
+    }
+  ],
+  "llm": [
+    {
+      "prompt": "下一个副本什么时候？",
+      "status": "passed",
+      "calls": [
+        {
+          "name": "zjcs_query",
+          "arguments": {
+            "query": "next_dungeon"
+          }
+        }
+      ],
+      "answer": "下一个副本是 **仙海云舟**（龙之国），开启时间为：\n\n- **副本时间**：2026年10月12日（距今还有 **11 天**）\n- **备战阶段**：2026年10月11日开启（距今还有 **10 天**）\n\n各难度已确认的准入战力如下（仅供参考，不代表推荐通关战力）：\n\n| 难度 | 准入战力 |\n|------|---------|\n| 普通 | 16,500,000 |\n| 困难 | 20,000,000 |\n| 噩梦 | 24,500,000 |\n| 炼狱 | 40,000,000 |\n\n需要我帮你确认出战队伍配置或备战安排吗？"
+    },
+    {
+      "prompt": "下一次宾果什么时候？",
+      "status": "passed",
+      "calls": [
+        {
+          "name": "zjcs_query",
+          "arguments": {
+            "activity": "宾果抽抽乐",
+            "query": "next_weekly_activity"
+          }
+        }
+      ],
+      "answer": "下一次**宾果抽抽乐**的开启时间是 **2026年10月12日**，距今还有 **11 天**（今天是2026年10月1日）。\n\n另外提醒一句：按轮换规则建议预留至少 **20 个果实**，到时可以更从容地参与活动。"
+    },
+    {
+      "prompt": "赛季什么时候更新？",
+      "status": "passed",
+      "calls": [
+        {
+          "name": "zjcs_query",
+          "arguments": {
+            "query": "next_season"
+          }
+        }
+      ],
+      "answer": "下一赛季更新安排如下：\n\n- **S3 羽之国**将于 **2026年10月27日**开启\n- 距今天（10月1日）还有 **26天**\n\n需要提前准备的话，可以趁这段时间囤好资源和战力哦～"
+    },
+    {
+      "prompt": "下个副本门槛多少？",
+      "status": "passed",
+      "calls": [
+        {
+          "name": "zjcs_query",
+          "arguments": {
+            "query": "next_dungeon"
+          }
+        }
+      ],
+      "answer": "下个副本是 **「仙海云舟」**（龙之国区域），开启日期 **2026-10-12**，距今还有 **11 天**（今天是 2026-10-01）。建议 **2026-10-11** 开始备战。\n\n各难度已确认的准入战力门槛如下：\n\n| 难度 | 准入战力 |\n|------|--------|\n| 普通 | 1650 万 |\n| 困难 | 2000 万 |\n| 噩梦 | 2450 万 |\n| 炼狱 | 4000 万 |\n\n提醒：这些是**准入门槛**，不代表推荐通关战力。"
+    },
+    {
+      "prompt": "下个本要多少战力？",
+      "status": "passed",
+      "calls": [
+        {
+          "name": "zjcs_query",
+          "arguments": {
+            "query": "next_dungeon"
+          }
+        }
+      ],
+      "answer": "下一个副本是 **《仙海云舟》**（龙之国），将于 **2026-10-12** 开启，距今还有 **11 天**（今天为 2026-10-01）。\n\n各难度已确认的准入战力门槛如下：\n\n- **普通**：16,500,000\n- **困难**：20,000,000\n- **噩梦**：24,500,000\n- **炼狱**：40,000,000\n\n以上为已确认的准入门槛，不代表推荐通关战力。如果需要备战时间/副本准备日信息，或查公会周常活动的安排，也可以告诉我。"
+    },
+    {
+      "prompt": "下个副本需求战力是多少？",
+      "status": "passed",
+      "calls": [
+        {
+          "name": "zjcs_query",
+          "arguments": {
+            "query": "next_dungeon"
+          }
+        }
+      ],
+      "answer": "下个副本是「仙海云舟」（龙之国），将于 **2026-10-12** 开放（今天是 2026-10-01，距今 **11 天**）。\n\n已确认的各难度准入门槛战力如下：\n\n| 难度 | 准入战力 |\n|------|----------|\n| 普通 | 16,500,000 |\n| 困难 | 20,000,000 |\n| 噩梦 | 24,500,000 |\n| 炼狱 | 40,000,000 |\n\n以上是已确认的准入战力，并非推荐通关战力哦。有需要的话我也可以帮你算算提前量或准备时间（前一天 10-11 就可以做准备）。"
+    },
+    {
+      "prompt": "下个本几战力能进？",
+      "status": "passed",
+      "calls": [
+        {
+          "name": "zjcs_query",
+          "arguments": {
+            "query": "next_dungeon"
+          }
+        }
+      ],
+      "answer": "下个本是「仙海云舟」（龙之国），开启时间为 **2026-10-12**（距离今天还有 **11 天**，备战日 10-11）。\n\n各难度已确认的准入战力如下：\n\n| 难度 | 准入战力 |\n|------|---------|\n| 普通 | 16,500,000 |\n| 困难 | 20,000,000 |\n| 噩梦 | 24,500,000 |\n| 炼狱 | 40,000,000 |\n\n注意：这是\"准入\"门槛，不代表推荐通关战力。想进哪个难度，对照一下现在的主力战力即可。"
+    },
+    {
+      "prompt": "下一个副本战力要求呢？",
+      "status": "passed",
+      "calls": [
+        {
+          "name": "zjcs_query",
+          "arguments": {
+            "query": "next_dungeon"
+          }
+        }
+      ],
+      "answer": "下一个副本是「仙海云舟」（龙之国），将于 **2026-10-12** 开启（距开启还有 **11 天**，10-11 可作准备）。各难度已确认的准入战力门槛如下：\n\n- 普通：**16,500,000**\n- 困难：**20,000,000**\n- 噩梦：**24,500,000**\n- 炼狱：**40,000,000**\n\n以上是各难度的准入战力要求，不代表推荐通关战力。数据已确认，放心参考～"
+    }
+  ],
+  "core_tool_visible": true,
+  "registered_tool": {
+    "name": "zjcs_query",
+    "description": "查询《杖剑传说》本公会服务器的可靠事实：下一个副本、宾果/刮刮乐/菲涅克、下一赛季更新时间、开服/赛季进度、秘宝奖励、近期活动日程。下个本门槛多少、要多少战力、几战力能进、副本需求战力/准入战力都用 next_dungeon；其 requirements 按难度提供已确认战力，缺失难度不猜，不代表推荐通关战力。返回结构化事实供你组织回复；unknown/null 表示不知道，不得猜测。副本/周常含今天，下一赛季严格晚于今天；日期精度为自然日。日程只表示未来14天开启/换期，不表示持续或结束时间。pending_formal_power 无可靠战力，rule_fallback 仅确认奖励类别，confirmed_partial 仅部分字段，confirmed_with_version_risk 有版本风险。",
+    "parameters_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "next_dungeon=下一个副本时间、门槛、战力需求、几战力能进（requirements 按难度）；next_weekly_activity=下一次周常；next_season=下一赛季；progress=进度；secret_treasure=秘宝；schedule=近期日程。",
+          "enum": [
+            "next_dungeon",
+            "next_weekly_activity",
+            "next_season",
+            "progress",
+            "secret_treasure",
+            "schedule"
+          ]
+        },
+        "activity": {
+          "type": "string",
+          "description": "周常活动的完整名称；宾果/刮刮乐/菲涅克分别使用对应完整名。",
+          "enum": [
+            "宾果抽抽乐",
+            "幸运刮刮乐",
+            "菲涅克的谜题"
+          ]
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  "llm_model": "bailian-v4f-0731",
+  "config_migration": "1.4.0 -> 1.5.0; explicit season datetime preserved",
+  "notification_state_created": false,
+  "status": "passed"
+}
