@@ -52,6 +52,8 @@ live production files == target Git commit bytes
 
 ## 部署文件范围
 
+0.2.0 RC 目前仅在 main 收口，未部署生产。该候选保持 config `1.4.0` / notification state `2`，无需配置或状态迁移，部署文件范围仍为下面 5 个文件。只有后续外部 Review 与部署任务明确授权后才能切换生产；本轮运行时验收均使用本地隔离环境，详见 [0.2.0 验收记录](docs/RC_0.2.0_VALIDATION.md)。
+
 插件发布仅包含：
 
 ```text

@@ -1,10 +1,14 @@
 # Project Status
 
-更新时间：2026-09-14
+更新时间：2026-10-01
 
 ## 当前阶段
 
-开发增量（2026-10-01）：`feat/maibot-query-tools` 新增自然语言只读事实 Tool `zjcs_query`，供 MaiBot 查询副本、指定周常、下一赛季、进度、秘宝和日程。该增量等待外部 Review，未合并 main、未创建发布、未部署生产；manifest/config/state 版本保持 `0.1.12` / `1.4.0` / `2`。接口与权限边界见 [README](README.md#自然语言只读工具feature-分支待外部-review)。
+**仓库当前候选版本为 0.2.0 RC，正式生产仍为 0.1.12。**
+
+自然语言只读事实 Tool `zjcs_query` 的 feature commit `b722e123739b2c8be286b5f95fcbc161e441aa83` 已通过外部 Review，并以独立 merge commit 合入 main。0.2.0 仅收口该功能、版本、文档及受控运行时验收，不增加其他业务功能；config `1.4.0` 与 notification state `2` 保持兼容，无迁移。接口与权限边界见 [README](README.md#自然语言只读工具020-rc)。
+
+本轮未部署生产、未重启服务、未创建正式 Release；0.2.0 RC 等待下一轮外部 Review。
 
 **当前正式生产版本为 0.1.12（commit `27d1db8`），已于 2026-09-15 完成生产部署与技术验收。**
 
@@ -27,6 +31,7 @@
 
 ## Release Candidate 状态
 
+- **0.2.0 RC：自然语言只读 Tool 收口；候选验收记录见 [docs/RC_0.2.0_VALIDATION.md](docs/RC_0.2.0_VALIDATION.md)。未部署生产、未创建正式 Release。**
 - **0.1.12：已于 2026-09-15 部署生产并完成技术验收（通过外部部署候选 Review 与生产部署验收 Review）。**
 - 概括：0.1.6～0.1.10 新增群内主动查询（`/杖剑传说 日程`、`/杖剑传说 副本`、`/杖剑传说 进度`、`/杖剑传说 秘宝`、`/杖剑传说 活动`），全部为只读查询、不写通知状态、不依赖提醒提前天数；0.1.11 完成时间线数据一致性与抗坏数据 hardening（日期模型互斥、ID/来源/期次审计、发布前 integrity gate）。
 

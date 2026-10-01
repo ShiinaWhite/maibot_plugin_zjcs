@@ -2,11 +2,11 @@
 
 《杖剑传说》MaiBot 公会助手插件。
 
-`杖剑助手` 是一个运行在 [MaiBot](https://github.com/MaiM-with-u/MaiBot) 上的插件（plugin id：`zjcs.guild-notifier`，仓库当前版本 `0.1.12`；当前生产版本与验收状态见 [PROJECT_STATUS.md](PROJECT_STATUS.md)），基于 MaiBot Plugin SDK 实现。它根据本地维护的《杖剑传说》时间线数据，每天定时检查服务器进度，提前向公会 QQ 群发送副本、活动和重要事件通知。
+`杖剑助手` 是一个运行在 [MaiBot](https://github.com/MaiM-with-u/MaiBot) 上的插件（plugin id：`zjcs.guild-notifier`，仓库当前候选版本 `0.2.0`；当前生产版本与验收状态见 [PROJECT_STATUS.md](PROJECT_STATUS.md)），基于 MaiBot Plugin SDK 实现。它提供自然语言对话可调用的只读游戏事实查询，并根据本地维护的《杖剑传说》时间线数据，每天定时检查服务器进度，提前向公会 QQ 群发送副本、活动和重要事件通知。
 
 项目从公会真实需求出发，当前核心能力是服务器进度 / 活动 / 副本通知；未来会按公会实际使用需求继续扩展其他实用功能，不会永久限定为通知插件。
 
-## 当前仓库能力（0.1.12）
+## 当前仓库能力（0.2.0 RC）
 
 - **绝对日历事件**：全服同一自然日开启的联动、节日等可使用 `event_date`，不随服务器开服日漂移；
 
@@ -86,7 +86,7 @@ admin_qqs = []
 - 正式服确认数据优先，测试服 / 预测数据不作为确定事实通知；
 - `pending` 或未确认内容不通知，缺失数据不猜测。
 
-## 自然语言只读工具（feature 分支，待外部 Review）
+## 自然语言只读工具（0.2.0 RC）
 
 插件新增一个 SDK Tool：`zjcs_query`。MaiBot 可以在普通对话中查询本公会已配置服务器的事实，再自行组织回复。工具本身不发送群聊消息、不调用 LLM，不读取或写入 notification state，不受提醒提前天数、通知目标群和每日检查时间影响。现有斜杠命令继续保留。
 
@@ -119,7 +119,9 @@ admin_qqs = []
 
 **权限边界**：`command.admin_qqs` 继续只限制斜杠命令。Tool 提供公开游戏事实，供 MaiBot 当前可使用该插件工具的对话调用；不按命令管理员列表授权，也不包含测试发送、预览投递、管理或配置修改能力。当前 Core 注入的 Tool 上下文字段不能充当管理员认证。工具使用插件配置的同一个公会服务器，不根据聊天群号切换服务器；`target.group_ids` 继续只控制自动提醒目标。
 
-工具通过 `visibility="visible"` 声明首轮 LLM 可见；模型是否实际选用仍由 MaiBot 决定。本分支只验证本地 SDK / Core 适配和测试，没有生产群聊验收，不代表已部署。Manifest 版本仍为 `0.1.12`，本阶段不创建发布。
+工具通过 `visibility="visible"` 声明首轮 LLM 可见；模型是否实际选用仍由 MaiBot 决定。MaiBot Runner 必须实际激活插件（`plugin.enabled=true`），禁用插件时不会注册工具。`target.group_ids=[]` 可在不配置自动提醒投递目标的情况下使用查询工具。
+
+已通过外部 Review 的功能分支合入 main，manifest 版本为 `0.2.0`；config `1.4.0` 与 state `2` 保持兼容，无迁移。当前为 Release Candidate，未部署生产、未创建正式 Release。受控运行时验收见 [0.2.0 验收记录](docs/RC_0.2.0_VALIDATION.md)，当前生产版本依据见 [PROJECT_STATUS.md](PROJECT_STATUS.md)。
 
 ## 开发文档导航
 

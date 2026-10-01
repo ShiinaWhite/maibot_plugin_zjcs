@@ -1,0 +1,199 @@
+{
+  "core_commit": "41406c8edf5a2b9f8041652835b236ed40aba513",
+  "sdk_version": "2.8.0",
+  "plugin_version": "0.2.0",
+  "plugin_sha256": {
+    "_manifest.json": "3179c8108e7e3b5a341310d8d18a45d27f333084a1f2c3e25a079b5b78ac3239",
+    "plugin.py": "079a6d3899195f00814489132c1d5d3dca2cc2d5c9ba06ac4ce9fbbcd40c4af0",
+    "timeline.py": "30bebd5dc5139b41c19539b0a95e35f6e16d1273dc0d80bc8bc62762a00bf9b1",
+    "state.py": "2fde57e47d0576a052f5a6e7644f05c2fa224c7a22ac84994c08d9cd161997f0",
+    "timeline_v1.json": "8ef84cf85ee79376941f59cb9c349afd8df8601d1f47baed06f20cfd50fba7be"
+  },
+  "test_date": "2026-10-01",
+  "test_open_date": "2026-07-06",
+  "runner": "passed",
+  "rpc": [
+    {
+      "arguments": {
+        "query": "next_dungeon"
+      },
+      "status": "passed",
+      "facts": {
+        "query": "next_dungeon",
+        "as_of": "2026-10-01",
+        "status": "ok",
+        "data": {
+          "event_id": "immortal_sea_ark",
+          "category": "dungeon",
+          "name": "仙海云舟",
+          "event_date": "2026-10-12",
+          "payload": {
+            "region": "龙之国",
+            "requirements": {
+              "普通": 16500000,
+              "困难": 20000000,
+              "噩梦": 24500000,
+              "炼狱": 40000000
+            },
+            "status": "confirmed"
+          },
+          "current_server_day": 88,
+          "days_until": 11,
+          "prepare_date": "2026-10-11",
+          "days_until_prepare": 10,
+          "requirements_available": true
+        },
+        "reason": null,
+        "source": {
+          "kind": "local_timeline",
+          "file": "timeline_v1.json",
+          "generated_on": "2026-09-14"
+        },
+        "timezone": "Asia/Shanghai"
+      }
+    },
+    {
+      "arguments": {
+        "query": "next_weekly_activity",
+        "activity": "宾果抽抽乐"
+      },
+      "status": "passed",
+      "facts": {
+        "query": "next_weekly_activity",
+        "as_of": "2026-10-01",
+        "status": "ok",
+        "data": {
+          "event_id": "weekly_side_activity_99",
+          "category": "activity",
+          "name": "宾果抽抽乐",
+          "event_date": "2026-10-12",
+          "payload": {
+            "type": "weekly_side_activity",
+            "server_day": 99
+          },
+          "current_server_day": 88,
+          "days_until": 11,
+          "date_basis": "local_rotation_rule",
+          "minimum_fruit_to_save": 20
+        },
+        "reason": null,
+        "source": {
+          "kind": "local_timeline",
+          "file": "timeline_v1.json",
+          "generated_on": "2026-09-14"
+        },
+        "timezone": "Asia/Shanghai"
+      }
+    },
+    {
+      "arguments": {
+        "query": "next_season"
+      },
+      "status": "passed",
+      "facts": {
+        "query": "next_season",
+        "as_of": "2026-10-01",
+        "status": "ok",
+        "data": {
+          "event_id": "season_s3_start",
+          "category": "event",
+          "name": "S3 羽之国开启",
+          "event_date": "2026-10-27",
+          "payload": {
+            "type": "season",
+            "status": "confirmed",
+            "season": "S3"
+          },
+          "current_server_day": 88,
+          "days_until": 26
+        },
+        "reason": null,
+        "source": {
+          "kind": "local_timeline",
+          "file": "timeline_v1.json",
+          "generated_on": "2026-09-14"
+        },
+        "timezone": "Asia/Shanghai"
+      }
+    }
+  ],
+  "llm": [
+    {
+      "prompt": "下一个副本什么时候？",
+      "status": "passed",
+      "calls": [
+        {
+          "name": "zjcs_query",
+          "arguments": {
+            "query": "next_dungeon"
+          }
+        }
+      ],
+      "answer": "根据公会服务器可靠进度查询，结果如下：\n\n**下一个副本：仙海云舟（龙之国）**\n- **开启日期：2026年10月12日**（今天为2026年10月1日，**距今还有11天**）\n- 备战/准备期：2026年10月11日（距今10天）\n\n战力要求参考：\n- 普通：16,500,000\n- 困难：20,000,000\n- 噩梦：24,500,000\n- 炼狱：40,000,000\n\n建议提前备战、检查队伍战力是否达标，祝开荒顺利！🎉"
+    },
+    {
+      "prompt": "下一次宾果什么时候？",
+      "status": "passed",
+      "calls": [
+        {
+          "name": "zjcs_query",
+          "arguments": {
+            "activity": "宾果抽抽乐",
+            "query": "next_weekly_activity"
+          }
+        }
+      ],
+      "answer": "下一次「宾果抽抽乐」的时间查询结果如下：\n\n- **活动日期**：2026年10月12日\n- **距离今天**：还有 **11 天**（今天是 2026-10-01，自然日精度）\n- **当前服务器天数**：第 88 天（活动开启时为第 99 天）\n- **温馨提示**：建议至少留 **20 个果实** 用于该活动\n\n（数据来源为本公会服务器时间线，生成于 2026-09-14，时区 Asia/Shanghai。）"
+    },
+    {
+      "prompt": "赛季什么时候更新？",
+      "status": "passed",
+      "calls": [
+        {
+          "name": "zjcs_query",
+          "arguments": {
+            "query": "next_season"
+          }
+        }
+      ],
+      "answer": "查询了本公会服务器的时间线，结果如下：\n\n**下一赛季更新时间：2026年10月27日（S3「羽之国」开启）**\n\n- 今天是 2026年10月1日，距离 S3 开启还有 **26 天**。\n- 当前服务器进度为第 88 天。\n- 该信息来自公会本地时间线（生成于 2026-09-14），状态为已确认。\n\n需要的话，我还可以帮你查下一个副本、周常活动或近期日程安排～"
+    }
+  ],
+  "core_tool_visible": true,
+  "registered_tool": {
+    "name": "zjcs_query",
+    "description": "查询《杖剑传说》本公会服务器的可靠事实：下一个副本、宾果/刮刮乐/菲涅克、下一赛季更新时间、开服/赛季进度、秘宝奖励、近期活动日程。返回结构化事实供你组织回复；unknown/null 表示不知道，不得猜测。副本/周常含今天，下一赛季严格晚于今天；日期精度为自然日。日程只表示未来14天开启/换期，不表示持续或结束时间。pending_formal_power 无可靠战力，rule_fallback 仅确认奖励类别，confirmed_partial 仅部分字段，confirmed_with_version_risk 有版本风险。",
+    "parameters_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "next_dungeon=下一个副本；next_weekly_activity=下一次周常；next_season=下一赛季；progress=进度；secret_treasure=秘宝；schedule=近期日程。",
+          "enum": [
+            "next_dungeon",
+            "next_weekly_activity",
+            "next_season",
+            "progress",
+            "secret_treasure",
+            "schedule"
+          ]
+        },
+        "activity": {
+          "type": "string",
+          "description": "周常活动的完整名称；宾果/刮刮乐/菲涅克分别使用对应完整名。",
+          "enum": [
+            "宾果抽抽乐",
+            "幸运刮刮乐",
+            "菲涅克的谜题"
+          ]
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  "llm_model": "bailian-v4f-0731",
+  "notification_state_created": false,
+  "status": "passed"
+}

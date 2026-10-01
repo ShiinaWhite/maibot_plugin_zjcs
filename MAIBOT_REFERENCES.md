@@ -18,7 +18,7 @@
 
 ## 自然语言 Tool API（2026-10-01 本地核验）
 
-本次事实来源：本地 MaiBot `dev` commit `41406c8edf5a2b9f8041652835b236ed40aba513`，其 `.venv` 中 `maibot-plugin-sdk 2.8.0`。这是开发环境核验，不代表生产 Core 的版本已被重新确认；未修改 Core。
+本次事实来源：本地 MaiBot `dev` commit `41406c8edf5a2b9f8041652835b236ed40aba513`，其 `.venv` 中 `maibot-plugin-sdk 2.8.0`。0.2.0 RC 阶段已补充真实 Runner / Core / RPC 与受控 LLM 闭环验收，并只读确认生产 Core `1.2.2` / SDK `2.8.0` 及关键 Tool 路径源码 hash 一致；范围、默认 planner provider 限制和可复现脚本见 [验收记录](docs/RC_0.2.0_VALIDATION.md)。未修改 Core，未部署候选。
 
 - SDK `maibot_sdk/components.py`：`Tool(..., parameters=list[ToolParameterInfo], **metadata)` 声明组件，默认调用方法 `plugin.invoke_tool`。
 - SDK `maibot_sdk/types.py`：`ToolParameterInfo`、`ToolParamType` 支持类型、必填和枚举；二者从 `maibot_sdk.types` 导入，`Tool` 从 `maibot_sdk` 导入。

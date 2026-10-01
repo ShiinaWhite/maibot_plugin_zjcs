@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
-  "version": "0.1.12",
+  "version": "0.2.0",
   "name": "杖剑助手",
-  "description": "《杖剑传说》公会副本、活动和重要事件提前通知插件。",
+  "description": "《杖剑传说》公会只读查询工具与副本、活动、重要事件提前通知插件。",
   "author": {
     "name": "野生的金属乌帕",
     "url": "https://github.com/ShiinaWhite/maibot_plugin_zjcs"

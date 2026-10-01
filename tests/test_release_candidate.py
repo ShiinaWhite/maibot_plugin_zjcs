@@ -1,4 +1,4 @@
-"""0.1.12 Release Candidate 最终产品矩阵。
+"""0.2.0 Release Candidate 产品回归矩阵。
 
 把 0.1.5～0.1.11 累积的时间线 contract 与 0.1.6～0.1.10 的查询能力
 组合成一个可部署、可验证的最终回归基准。
@@ -173,5 +173,5 @@ def test_rc_version_contract() -> None:
         )
     )
 
-    assert manifest["version"] == "0.1.12"
+    assert manifest["version"] == "0.2.0"
     assert manifest["id"] == "zjcs.guild-notifier"
