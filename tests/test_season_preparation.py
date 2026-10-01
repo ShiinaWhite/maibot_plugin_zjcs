@@ -405,7 +405,7 @@ async def test_daily_09_and_precise_20_coexist_in_one_loop(tmp_path, monkeypatch
     assert daily == [(DUE.date(), DUE.replace(hour=9))]
     assert len(instance.ctx.send.calls) == 1
     assert "36.0 小时" in instance.ctx.send.calls[0][0]
-    assert max(sleeps) <= 60
+    assert sleeps == [60, 11 * 3600, 13 * 3600]
 
 
 @pytest.mark.asyncio
@@ -428,7 +428,183 @@ async def test_wakes_at_exact_second_not_next_minute(tmp_path, monkeypatch):
     with pytest.raises(plugin.asyncio.CancelledError):
         await instance._daily_schedule_loop()
     assert sleeps[0] == 17
+    assert sleeps[1] == 13 * 3600  # Persisted success needs no minute polling.
     assert len(instance.ctx.send.calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "initial,expected_wake",
+    [
+        (DUE - timedelta(days=2), DUE.replace(hour=9) - timedelta(days=1)),
+        (DUE.replace(hour=9), DUE),
+    ],
+)
+async def test_before_window_waits_for_earlier_daily_or_precise_node(
+    tmp_path, monkeypatch, initial, expected_wake
+):
+    frozen_clock(monkeypatch, initial)
+    instance = instance_for(tmp_path)
+    sleeps = []
+
+    async def no_daily(**kwargs):
+        pass
+
+    async def stop(seconds):
+        sleeps.append(seconds)
+        raise plugin.asyncio.CancelledError
+
+    monkeypatch.setattr(instance, "_run_daily_check", no_daily)
+    monkeypatch.setattr(plugin.asyncio, "sleep", stop)
+    with pytest.raises(plugin.asyncio.CancelledError):
+        await instance._daily_schedule_loop()
+    assert sleeps == [(expected_wake - initial).total_seconds()]
+    assert sleeps[0] > 60
+    assert instance.ctx.send.calls == []
+
+
+@pytest.mark.asyncio
+async def test_partial_failure_ticks_once_then_returns_to_long_wait(
+    tmp_path, monkeypatch
+):
+    clock = frozen_clock(monkeypatch)
+    instance = instance_for(
+        tmp_path,
+        groups=["1", "2"],
+        send_result=[{"sent": True}] + [{"sent": False}] * 4 + [{"sent": True}],
+    )
+    sleeps = []
+
+    async def no_daily(**kwargs):
+        pass
+
+    async def advance(seconds):
+        sleeps.append(seconds)
+        if seconds > 60:
+            raise plugin.asyncio.CancelledError
+        clock.current += timedelta(seconds=seconds)
+
+    monkeypatch.setattr(instance, "_run_daily_check", no_daily)
+    monkeypatch.setattr(plugin.asyncio, "sleep", advance)
+    with pytest.raises(plugin.asyncio.CancelledError):
+        await instance._daily_schedule_loop()
+    assert sleeps[:4] == [1, 3, 5, 60]
+    assert len(sleeps) == 5 and sleeps[-1] > 60
+    assert len(instance.ctx.send.calls) == 6
+    assert [call["group_id"] for call in instance.ctx.chat.calls] == ["1"] + ["2"] * 5
+    state = NotificationState(tmp_path / NotificationState.FILE_NAME).load()
+    assert all(
+        state.contains(group, preparations()[0].notification_key)
+        for group in ["1", "2"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_state_write_failure_ticks_without_resending_then_stops(
+    tmp_path, monkeypatch
+):
+    clock = frozen_clock(monkeypatch)
+    instance = instance_for(tmp_path)
+    original = NotificationState.mark_sent_many
+    writes = []
+    sleeps = []
+
+    def flaky_write(state, group, keys):
+        writes.append(clock.current)
+        if len(writes) <= 2:
+            raise StateFileError("disk unavailable")
+        return original(state, group, keys)
+
+    async def no_daily(**kwargs):
+        pass
+
+    async def advance(seconds):
+        sleeps.append(seconds)
+        if seconds > 60:
+            raise plugin.asyncio.CancelledError
+        clock.current += timedelta(seconds=seconds)
+
+    monkeypatch.setattr(NotificationState, "mark_sent_many", flaky_write)
+    monkeypatch.setattr(instance, "_run_daily_check", no_daily)
+    monkeypatch.setattr(plugin.asyncio, "sleep", advance)
+    with pytest.raises(plugin.asyncio.CancelledError):
+        await instance._daily_schedule_loop()
+    assert writes == [DUE, DUE + timedelta(seconds=60), DUE + timedelta(seconds=120)]
+    assert sleeps == [60, 60, 13 * 3600 - 120]
+    assert len(instance.ctx.send.calls) == 1
+    state = NotificationState(tmp_path / NotificationState.FILE_NAME).load()
+    assert state.contains("123456", preparations()[0].notification_key)
+
+
+@pytest.mark.asyncio
+async def test_pending_retry_wakes_at_expiry_and_stops_all_work(tmp_path, monkeypatch):
+    clock = frozen_clock(monkeypatch, START - timedelta(seconds=90))
+    instance = instance_for(tmp_path)
+    writes = []
+    sleeps = []
+
+    def fail(*args):
+        writes.append(clock.current)
+        raise StateFileError("disk unavailable")
+
+    async def no_daily(**kwargs):
+        pass
+
+    async def advance(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) == 3:
+            raise plugin.asyncio.CancelledError
+        clock.current += timedelta(seconds=seconds)
+
+    monkeypatch.setattr(NotificationState, "mark_sent_many", fail)
+    monkeypatch.setattr(instance, "_run_daily_check", no_daily)
+    monkeypatch.setattr(plugin.asyncio, "sleep", advance)
+    with pytest.raises(plugin.asyncio.CancelledError):
+        await instance._daily_schedule_loop()
+    assert sleeps == [60, 30, 3600]
+    assert writes == [START - timedelta(seconds=90), START - timedelta(seconds=30)]
+    assert clock.current == START
+    assert len(instance.ctx.send.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_config_update_interrupts_long_wait_and_adds_new_group(
+    tmp_path, monkeypatch
+):
+    import asyncio
+
+    frozen_clock(monkeypatch)
+    instance = instance_for(tmp_path, groups=["1"])
+    sleeping = asyncio.Queue()
+
+    async def no_daily(**kwargs):
+        pass
+
+    async def block(seconds):
+        sleeping.put_nowait(seconds)
+        await asyncio.Future()
+
+    monkeypatch.setattr(instance, "_run_daily_check", no_daily)
+    monkeypatch.setattr(plugin.asyncio, "sleep", block)
+    instance._start_daily_task()
+    try:
+        assert await asyncio.wait_for(sleeping.get(), timeout=1) > 60
+        first_task = instance._daily_task
+        config = instance.config.model_dump()
+        config["target"]["group_ids"] = ["1", "2"]
+        instance.set_plugin_config(config)
+        await instance.on_config_update("self", config, "1.5.0")
+        assert await asyncio.wait_for(sleeping.get(), timeout=1) > 60
+        assert first_task.cancelled()
+        assert instance._daily_task is not first_task
+        assert [call["group_id"] for call in instance.ctx.chat.calls] == ["1", "2"]
+        state = NotificationState(tmp_path / NotificationState.FILE_NAME).load()
+        assert all(
+            state.contains(group, preparations()[0].notification_key)
+            for group in ["1", "2"]
+        )
+    finally:
+        await instance.on_unload()
 
 
 @pytest.mark.asyncio

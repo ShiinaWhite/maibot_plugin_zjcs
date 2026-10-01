@@ -15,7 +15,7 @@
 ## 调度、状态与兼容
 
 - 每日任务仍在原配置时间检查原六类提醒；同一任务串行检查精确节点，避免两个状态写入者。
-- 精确节点参加下一次唤醒计算；有效配置存在时最多每分钟刷新。节点无需等到次日 09:00。
+- 窗口前只等待下一每日检查或精确节点中较早者，不每分钟刷新；仅窗口内未完成的发送 / 状态落盘工作才以 60 秒或剩余窗口中较小者重试。全部持久化后恢复长等待，配置更新通过原生命周期重新判断。节点无需等到次日 09:00。
 - 准备窗口 `[start - 36h, start)`；重启和失败群允许在窗口内补齐，开始后不新发起发送。每次尝试及流解析完成后均检查过期，远端已接收的请求不能撤回。
 - 各群分别沿用 1/3/5 秒重试、流解析和肯定发送成功判定。新命名空间 key 包含事件 ID / UTC 开启瞬间 / 36h；成功群不重发，失败群可继续补齐。只改配置的偏移表示而保持相同瞬间，不会产生新 key。
 - state 继续为 2。所有历史 keys 保留，不新增迁移；文件坏数据时停止发送。磁盘写入失败时，本进程缓存肯定成功身份，并在后续窗口检查补写状态；持久化之前崩溃仍有重复风险，未引入投递事务。
@@ -26,7 +26,7 @@
 
 完整回归覆盖旧命令、六类每日提醒、多群去重、重试、旧配置迁移、state 历史与时间线 integrity gate。新增精确提醒测试覆盖 36h、跨日 / UTC 偏移 / DST、窗口边界、空配置 / 关闭 / 日期冲突 / 重复、重启与部分失败、磁盘失败补写、过期重试和慢流解析、群发送跨过开始时刻、09:00 与 20:00 共存、精确秒唤醒、卸载取消、Tool 只读。
 
-最终结果：**310 项全部通过**；Ruff check / format check 全部通过（12 个 Python 文件），`git diff --check` 通过；包含既有时间线 integrity gate。命令为 MaiBot `.venv` 的 `python -m pytest -q`、`ruff check .`、`ruff format --check .`，以及 `git diff --check`。
+最终结果：**316 项全部通过**；Ruff check / format check 全部通过（12 个 Python 文件），`git diff --check` 通过；包含既有时间线 integrity gate。命令为 MaiBot `.venv` 的 `python -m pytest -q`、`ruff check .`、`ruff format --check .`，以及 `git diff --check`。
 
 ## 真实 Core / Runner / LLM 受控验收
 
@@ -43,6 +43,12 @@ python scripts/validate_query_runtime.py --core-root <local-core> --llm --power-
 实际结果：**Runner / 六类 RPC / 8 个 LLM 闭环均通过**。Runner 加载 0.3.0；Core 可见 Tool，必填 query schema 正常；六类 RPC 返回真实插件事实；config 1.4.0 通过 Runner 自动迁移为 1.5.0，显式时刻列表保留；没有创建 notification state。
 
 LLM 不强制 Tool choice：给出插件 schema 和禁止猜测的公会助手提示，模型自行选 Tool → 经真实 IPC 获取 facts → 回填 provider 工具历史 → 模型组织回复。原三问为副本时间、宾果时间、赛季更新；新增五问为门槛、要多少战力、需求战力、几战力能进、战力要求。日期回答校验实际日期和天数，战力回答校验全部已确认难度及数值。结果见 [受控验收 JSON](evidence/dev_query_runtime.json)。这证明该模型、该提示和本地当前架构的闭环，不等同生产 QQ 下所有表达或模型都会调用 Tool。
+
+## 调度效率优化复验
+
+针对基线 `ccb27513dba4250a24c7c264a84a7119487fce44` 的非阻塞效率问题，仅优化窗口前和工作完成后的等待。新增 6 项测试并强化 2 项既有断言，覆盖长等待取较早节点、精确秒唤醒、部分群失败补齐、状态写入失败不重发、完成后停止轮询、窗口截止和配置更新新增群；完整回归 316 项通过。plugin 0.3.0 / config 1.5.0 / state 2 不变。
+
+上述 Runner / LLM JSON 为优化前主体实现的受控验收证据，本轮未修改 Tool 或重跑 LLM；本轮调度变化由完整回归及新增 scheduler 测试验证。
 
 ## Review 重点
 

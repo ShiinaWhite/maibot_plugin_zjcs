@@ -787,7 +787,7 @@ class ZjcsGuildNotifier(MaiBotPlugin):
                     tzinfo=timezone,
                 )
 
-            await self._run_season_preparation_check()
+            retry_until = await self._run_season_preparation_check()
             now = datetime.now(timezone)
 
             if next_run is None:
@@ -798,15 +798,15 @@ class ZjcsGuildNotifier(MaiBotPlugin):
                 )
             delay = max((next_run - now).total_seconds(), 0.1)
             preparations = self._configured_season_preparations()
-            if any(
-                item.starts_at.timestamp() > now.timestamp() for item in preparations
-            ):
-                # Only configured precise reminders need a bounded retry/refresh tick.
-                delay = min(delay, 60.0)
-                for item in preparations:
-                    seconds = item.remind_at.timestamp() - now.timestamp()
-                    if seconds > 0:
-                        delay = min(delay, seconds)
+            for item in preparations:
+                seconds = item.remind_at.timestamp() - now.timestamp()
+                if seconds > 0:
+                    delay = min(delay, seconds)
+            if retry_until is not None:
+                remaining = retry_until.timestamp() - now.timestamp()
+                if remaining > 0:
+                    # Retry only unfinished work, never beyond its active window.
+                    delay = min(delay, 60.0, remaining)
             await asyncio.sleep(delay)
 
     def _configured_season_preparations(self) -> list[SeasonPreparation]:
@@ -834,7 +834,8 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             self._logger.error("赛季准备时刻配置无效，跳过精确提醒：%s", exc)
             return []
 
-    async def _run_season_preparation_check(self) -> None:
+    async def _run_season_preparation_check(self) -> datetime | None:
+        """Return the earliest expiry of work still needing a retry, if any."""
         preparations = self._configured_season_preparations()
         if not preparations:
             return
@@ -850,17 +851,22 @@ class ZjcsGuildNotifier(MaiBotPlugin):
             state.load()
         except StateFileError as exc:
             self._logger.error("赛季准备通知状态读取失败，跳过发送：%s", exc)
-            return
+            active = [item for item in due if item.is_due(datetime.now(timezone))]
+            return min(
+                (item.starts_at for item in active),
+                key=lambda value: value.timestamp(),
+                default=None,
+            )
         for item in due:
             key = item.notification_key
             for group_id in group_ids:
                 identity = (group_id, key)
                 if state.contains(group_id, key):
                     continue
+                now = datetime.now(timezone)
+                if not item.is_due(now):
+                    break
                 if identity not in self._season_sent_in_process:
-                    now = datetime.now(timezone)
-                    if not item.is_due(now):
-                        break
                     message = format_season_preparation(item, now=now)
                     if not await self._send_text_with_retry(
                         message, group_id, expires_at=item.starts_at
@@ -873,6 +879,21 @@ class ZjcsGuildNotifier(MaiBotPlugin):
                     state.mark_sent_many(group_id, [key])
                 except StateFileError as exc:
                     self._logger.error("赛季准备通知已发送但状态写入失败：%s", exc)
+
+        now = datetime.now(timezone)
+        return min(
+            (
+                item.starts_at
+                for item in due
+                if item.is_due(now)
+                and any(
+                    not state.contains(group_id, item.notification_key)
+                    for group_id in group_ids
+                )
+            ),
+            key=lambda value: value.timestamp(),
+            default=None,
+        )
 
     async def _run_daily_check(self, *, today: date) -> None:
         try:
