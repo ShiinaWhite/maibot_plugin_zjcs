@@ -1292,6 +1292,7 @@ def test_command_registration_replaces_legacy_operator_commands() -> None:
     components = {
         component["name"]: component
         for component in ZjcsGuildNotifier().get_components()
+        if component["type"] == "COMMAND"
     }
 
     # 旧开发阶段指令不再注册为正式 Command。

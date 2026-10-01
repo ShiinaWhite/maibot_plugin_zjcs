@@ -86,6 +86,41 @@ admin_qqs = []
 - 正式服确认数据优先，测试服 / 预测数据不作为确定事实通知；
 - `pending` 或未确认内容不通知，缺失数据不猜测。
 
+## 自然语言只读工具（feature 分支，待外部 Review）
+
+插件新增一个 SDK Tool：`zjcs_query`。MaiBot 可以在普通对话中查询本公会已配置服务器的事实，再自行组织回复。工具本身不发送群聊消息、不调用 LLM，不读取或写入 notification state，不受提醒提前天数、通知目标群和每日检查时间影响。现有斜杠命令继续保留。
+
+| `query` | 查询内容 | 自然语言例子 |
+| --- | --- | --- |
+| `next_dungeon` | 今天起最近的副本、已确认战力、攒次数日期 | 下一个副本什么时候？ |
+| `next_weekly_activity` | 今天起下一项周常，或指定活动的下一次开启 | 下一次宾果什么时候？刮刮乐还有多久？菲涅克什么时候？ |
+| `next_season` | 严格晚于今天的紧邻下一赛季开启日期 | 赛季什么时候更新？ |
+| `progress` | 开服天数、当前赛季及进度、前后关键节点 | 现在开服多少天了？ |
+| `secret_treasure` | 最近开启的一期及下一期秘宝、奖励可信度 | 下一期秘宝有什么奖励？ |
+| `schedule` | 含今天的未来 14 天开启 / 换期日程 | 最近有什么活动？ |
+
+`query` 为必填枚举；只有 `next_weekly_activity` 可以使用可选参数 `activity`，取值为 `宾果抽抽乐`、`幸运刮刮乐`、`菲涅克的谜题`。省略 `activity` 时查下一项轮换活动；指定时按本地轮换规则寻找该活动的下一次，不把眼前另一活动误当成所查活动。
+
+调用例子：
+
+```json
+{"query": "next_weekly_activity", "activity": "宾果抽抽乐"}
+```
+
+工具返回 SDK 支持的字典：`success`、`content`（JSON 事实文本）、`facts`（同一事实的结构化对象）。事实中包含 `query`、`as_of`、`timezone`、`source`、`status`、`data`、`reason`；`source.generated_on` 是本地数据集记录日期，`as_of` 是本次查询日期，不代表已联网刷新游戏资料。
+
+- `status=ok`：存在可用查询结果；空日程只表示窗口内没有已确认条目，不保证没有其他活动。
+- `status=unknown`：没有可靠日期 / 数据或服务器尚未开服；`success=true` 表示查询完成，`data=null`，LLM 应明确说明不知道。
+- `status=error`：参数、配置或本地数据无法读取 / 计算；`success=false`，不暴露配置值、私有路径或原始异常。
+- 副本返回原始数值战力和 `requirements_available`；缺失难度不补全，`pending_formal_power` 不返回战力。`confirmed_partial` 仅确认已有字段；`confirmed_with_version_risk` 仍有版本调整风险。
+- 秘宝 `reward_mode` 区分具体奖励（`explicit`）、仅类别规律（`rule_fallback`）和未知（`unavailable`）；不能把类别推成具体单品。
+- 副本 / 周常包含今天；下一赛季不把今天已开始的赛季称为下一赛季。S4+ 必须配置对应赛季锚点；紧邻赛季缺少日期时返回未知，不跳到更远赛季、不外推赛季长度。
+- 时间精度为配置时区中的自然日，开服当天为 Day 1；不提供小时倒计时，也不推测活动结束时间。
+
+**权限边界**：`command.admin_qqs` 继续只限制斜杠命令。Tool 提供公开游戏事实，供 MaiBot 当前可使用该插件工具的对话调用；不按命令管理员列表授权，也不包含测试发送、预览投递、管理或配置修改能力。当前 Core 注入的 Tool 上下文字段不能充当管理员认证。工具使用插件配置的同一个公会服务器，不根据聊天群号切换服务器；`target.group_ids` 继续只控制自动提醒目标。
+
+工具通过 `visibility="visible"` 声明首轮 LLM 可见；模型是否实际选用仍由 MaiBot 决定。本分支只验证本地 SDK / Core 适配和测试，没有生产群聊验收，不代表已部署。Manifest 版本仍为 `0.1.12`，本阶段不创建发布。
+
 ## 开发文档导航
 
 | 文档 | 内容 |

@@ -7,15 +7,18 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 import logging
+import json
 from pathlib import Path
 import tomllib
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from maibot_sdk import Command, Field, MaiBotPlugin, PluginConfigBase
+from maibot_sdk import Command, Field, MaiBotPlugin, PluginConfigBase, Tool
+from maibot_sdk.types import ToolParameterInfo, ToolParamType
 
 try:
     from .state import NotificationState, StateFileError
     from .timeline import (
+        build_query_facts,
         build_reminders,
         build_secret_treasure_overview,
         build_server_progress,
@@ -35,11 +38,14 @@ try:
         WEEKLY_ACTIVITY_PRE_OPEN_MESSAGE,
         Reminder,
         ReminderPolicy,
+        QUERY_TOPICS,
+        WEEKLY_ACTIVITY_POLICY_NAMES,
         validate_remind_day,
     )
 except ImportError:
     from state import NotificationState, StateFileError
     from timeline import (
+        build_query_facts,
         build_reminders,
         build_secret_treasure_overview,
         build_server_progress,
@@ -59,6 +65,8 @@ except ImportError:
         WEEKLY_ACTIVITY_PRE_OPEN_MESSAGE,
         Reminder,
         ReminderPolicy,
+        QUERY_TOPICS,
+        WEEKLY_ACTIVITY_POLICY_NAMES,
         validate_remind_day,
     )
 
@@ -400,6 +408,103 @@ class ZjcsGuildNotifier(MaiBotPlugin):
         del scope, config_data, version
         await self._stop_daily_task()
         self._start_daily_task()
+
+    @Tool(
+        "zjcs_query",
+        description=(
+            "查询《杖剑传说》本公会服务器的可靠事实：下一个副本、宾果/刮刮乐/菲涅克、"
+            "下一赛季更新时间、开服/赛季进度、秘宝奖励、近期活动日程。"
+            "返回结构化事实供你组织回复；unknown/null 表示不知道，不得猜测。"
+            "副本/周常含今天，下一赛季严格晚于今天；日期精度为自然日。"
+            "日程只表示未来14天开启/换期，不表示持续或结束时间。"
+            "pending_formal_power 无可靠战力，rule_fallback 仅确认奖励类别，"
+            "confirmed_partial 仅部分字段，confirmed_with_version_risk 有版本风险。"
+        ),
+        detailed_description=(
+            "只读本地时间线及已配置服务器日期，不发送消息。"
+            "next_dungeon 与 next_weekly_activity 包含今天；next_season 严格晚于今天。"
+            "activity 仅供 next_weekly_activity 指定活动，省略时查下一项轮换活动。"
+            "schedule 为含今天的未来14天开启/换期日程，不表示活动持续时间。"
+            "progress 查询当前开服天数和赛季进度；secret_treasure 查询当前/下一期奖励。"
+            "日期按配置时区的当前自然日计算，不提供小时倒计时。"
+            "pending_formal_power 不提供战力；rule_fallback 仅提供奖励类别；"
+            "confirmed_partial 只确认已有字段，confirmed_with_version_risk 存在版本调整风险。"
+        ),
+        parameters=[
+            ToolParameterInfo(
+                name="query",
+                param_type=ToolParamType.STRING,
+                description=(
+                    "next_dungeon=下一个副本；next_weekly_activity=下一次周常；"
+                    "next_season=下一赛季；progress=进度；"
+                    "secret_treasure=秘宝；schedule=近期日程。"
+                ),
+                enum_values=list(QUERY_TOPICS),
+            ),
+            ToolParameterInfo(
+                name="activity",
+                param_type=ToolParamType.STRING,
+                required=False,
+                description="周常活动的完整名称；宾果/刮刮乐/菲涅克分别使用对应完整名。",
+                enum_values=list(WEEKLY_ACTIVITY_POLICY_NAMES),
+            ),
+        ],
+        visibility="visible",
+    )
+    async def query_zjcs_facts(
+        self,
+        query: str = "",
+        activity: str | None = None,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        """Tool 仅返回事实；Host 注入的聊天身份不用于授权或消息投递。"""
+
+        del kwargs
+        facts: dict[str, object] = {
+            "status": "error",
+            "data": None,
+            "reason": None,
+        }
+        if query not in QUERY_TOPICS or (
+            activity is not None
+            and (
+                query != "next_weekly_activity"
+                or not isinstance(activity, str)
+                or activity not in WEEKLY_ACTIVITY_POLICY_NAMES
+            )
+        ):
+            facts["reason"] = (
+                "不支持的查询参数；请使用工具声明中的查询类型和活动完整名称。"
+            )
+        else:
+            try:
+                timezone = ZoneInfo(self.config.schedule.timezone)
+                today = datetime.now(timezone).date()
+                open_date, anchors = self._configured_timeline_dates()
+                facts = build_query_facts(
+                    load_timeline(TIMELINE_PATH),
+                    query=query,
+                    today=today,
+                    open_date=open_date,
+                    season_anchor_dates=anchors,
+                    activity_name=activity,
+                )
+                facts["timezone"] = str(timezone)
+            except (
+                OSError,
+                OverflowError,
+                TypeError,
+                ValueError,
+                RuntimeError,
+                ZoneInfoNotFoundError,
+            ):
+                # 不把配置、路径、上下文身份或原始异常暴露给 LLM。
+                facts["reason"] = "查询配置或本地数据无法读取/计算，不能给出可靠事实。"
+        return {
+            "success": facts["status"] != "error",
+            "content": json.dumps(facts, ensure_ascii=False),
+            "facts": facts,
+        }
 
     @Command(
         "zjcs_command",
