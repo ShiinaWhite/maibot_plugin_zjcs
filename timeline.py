@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from decimal import Decimal
 import json
 from pathlib import Path
@@ -32,6 +32,102 @@ RESERVED_GENERATED_ID_PREFIXES = (
     "secret_treasure_",
     "weekly_side_activity_",
 )
+SEASON_PREPARATION_HOURS = 36
+
+
+@dataclass(frozen=True)
+class SeasonPreparation:
+    event_id: str
+    name: str
+    starts_at: datetime
+
+    @property
+    def remind_at(self) -> datetime:
+        # Subtract elapsed hours in UTC, including across DST boundaries.
+        return self.starts_at.astimezone(timezone.utc) - timedelta(
+            hours=SEASON_PREPARATION_HOURS
+        )
+
+    @property
+    def notification_key(self) -> str:
+        instant = self.starts_at.astimezone(timezone.utc).isoformat()
+        return f"season_preparation:{self.event_id}:{instant}:36h"
+
+    def is_due(self, now: datetime) -> bool:
+        if now.utcoffset() is None:
+            raise ValueError("now must include a timezone")
+        instant = now.astimezone(timezone.utc)
+        return self.remind_at <= instant < self.starts_at.astimezone(timezone.utc)
+
+
+def build_season_preparations(
+    timeline: Mapping[str, Any],
+    *,
+    open_date: date,
+    season_anchor_dates: Mapping[str, date],
+    start_datetimes: Mapping[str, str],
+    calendar_timezone: tzinfo,
+) -> list[SeasonPreparation]:
+    """Explicit operator-confirmed instants must agree with known season dates.
+
+    No default opening hour. Ambiguous, unknown or conflicting facts are skipped.
+    This is a pure query: it does not access notification state.
+    """
+    events = [
+        e for e in _mapping_list(timeline.get("events")) if e.get("type") == "season"
+    ]
+    result = []
+    for event in events:
+        season = event.get("season")
+        if not isinstance(season, str) or not season:
+            continue
+        if sum(e.get("season") == season for e in events) != 1:
+            continue
+        if event.get("status") not in NOTIFIABLE_STATUSES:
+            continue
+        event_id, name = event.get("id"), event.get("name")
+        if (
+            not isinstance(event_id, str)
+            or not event_id
+            or not isinstance(name, str)
+            or not name
+        ):
+            continue
+        raw = start_datetimes.get(season)
+        if not isinstance(raw, str) or "T" not in raw:
+            continue
+        try:
+            starts_at = datetime.fromisoformat(raw)
+            if starts_at.utcoffset() is None:
+                continue
+            known_date = calculate_event_date(event, open_date, season_anchor_dates)
+            if (
+                known_date is None
+                or starts_at.astimezone(calendar_timezone).date() != known_date
+            ):
+                continue
+            item = SeasonPreparation(
+                event_id, name, starts_at.astimezone(calendar_timezone)
+            )
+            # Also validate subtraction for extreme datetimes before scheduling.
+            item.remind_at
+        except (ValueError, OverflowError):
+            continue
+        result.append(item)
+    return sorted(result, key=lambda item: (item.remind_at, item.event_id))
+
+
+def format_season_preparation(item: SeasonPreparation, *, now: datetime) -> str:
+    hours = (
+        item.starts_at.astimezone(timezone.utc) - now.astimezone(timezone.utc)
+    ).total_seconds() / 3600
+    return (
+        "【杖剑传说 · 赛季准备提醒】\n\n"
+        f"{item.name.removesuffix('开启')}将在约 {hours:.1f} 小时后开启。\n"
+        f"开启时间：{item.starts_at.isoformat(timespec='minutes')}。\n\n"
+        "如果本赛季当前目标已经完成，可以考虑从现在开始停止领取小床经验，"
+        "为新赛季预留挂机经验（最多约 36 小时；延迟收到时可预留时间会缩短）。"
+    )
 
 
 @dataclass(frozen=True)

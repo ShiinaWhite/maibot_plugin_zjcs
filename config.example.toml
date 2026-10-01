@@ -1,6 +1,6 @@
 [plugin]
 enabled = false
-config_version = "1.4.0"
+config_version = "1.5.0"
 
 [target]
 group_ids = []
@@ -28,3 +28,11 @@ event_remind_day = 2
 [command]
 # 管理员 QQ 号列表；留空则所有人都可以使用指令
 admin_qqs = []
+
+[season_preparation]
+enabled = true
+# 仅填写本服已确认的赛季开启时刻；空表不生成精确提醒。
+# 必须与时间线/season_dates 算出的日期一致，必须携带时区偏移。
+# 示例（不代表所有赛季固定 08:00）：
+# start_times = [{ season = "S3", start_datetime = "2026-10-10T08:00:00+08:00" }]
+start_times = []

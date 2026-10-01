@@ -199,6 +199,24 @@ def test_pending_power_never_leaks_to_tool():
     assert data["requirements_available"] is False
 
 
+def test_partial_dungeon_power_does_not_invent_missing_difficulties():
+    timeline = {
+        "dungeons": [
+            {
+                "id": "partial",
+                "name": "测试副本",
+                "server_day": 99,
+                "status": "confirmed_partial",
+                "requirements": {"普通": 16_500_000, "困难": None},
+            }
+        ]
+    }
+    data = facts("next_dungeon", timeline=timeline)["data"]
+    assert data["payload"]["requirements"] == {"普通": 16_500_000}
+    assert data["requirements_available"] is True
+    assert "噩梦" not in data["payload"]["requirements"]
+
+
 def test_progress_day_one_and_schedule_window():
     assert facts("progress", today=OPEN_DATE)["data"]["server_day"] == 1
     result = facts("schedule")

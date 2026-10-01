@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
 
 PLUGIN_ID = "zjcs.guild-notifier"
 RELEASE_FILES = (
@@ -65,9 +66,12 @@ def prepare(args: argparse.Namespace) -> int:
         hashes[name] = hashlib.sha256(source.read_bytes()).hexdigest()
     today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
     open_date = today - timedelta(days=87)
+    season_start = f"{(today + timedelta(days=26)).isoformat()}T08:00:00+08:00"
     (plugin_dir / "config.toml").write_text(
         '[plugin]\nenabled = true\nconfig_version = "1.4.0"\n'
-        f'[server]\nopen_date = "{open_date.isoformat()}"\n[target]\ngroup_ids = []\n',
+        f'[server]\nopen_date = "{open_date.isoformat()}"\n[target]\ngroup_ids = []\n'
+        "[season_preparation]\nenabled = true\n"
+        f'start_times = [{{ season = "S3", start_datetime = "{season_start}" }}]\n',
         encoding="utf-8",
     )
     report = {
@@ -79,6 +83,7 @@ def prepare(args: argparse.Namespace) -> int:
         "plugin_sha256": hashes,
         "test_date": today.isoformat(),
         "test_open_date": open_date.isoformat(),
+        "test_season_start": season_start,
         "runner": "pending",
         "rpc": [],
         "llm": [],
@@ -98,6 +103,8 @@ def prepare(args: argparse.Namespace) -> int:
     ]
     if args.llm:
         command.append("--llm")
+    if args.power_queries:
+        command.append("--power-queries")
     if args.model_name:
         command.extend(["--model-name", args.model_name])
     print(f"Isolated acceptance directory: {root}", flush=True)
@@ -133,7 +140,9 @@ def prepare(args: argparse.Namespace) -> int:
     return process.returncode
 
 
-async def validate(root: Path, live_llm: bool, selected_model: str | None) -> None:
+async def validate(
+    root: Path, live_llm: bool, selected_model: str | None, power_queries: bool
+) -> None:
     # Imported only inside the isolated source export.
     from src.config.config import config_manager
     from src.core.tooling import (
@@ -176,7 +185,10 @@ async def validate(root: Path, live_llm: bool, selected_model: str | None) -> No
     )
     try:
         await supervisor.start()
-        assert supervisor.get_loaded_plugin_versions().get(PLUGIN_ID) == "0.2.0"
+        assert (
+            supervisor.get_loaded_plugin_versions().get(PLUGIN_ID)
+            == report["plugin_version"]
+        )
         specs = await registry.list_tools(
             ToolAvailabilityContext(
                 session_id=context.session_id,
@@ -215,6 +227,19 @@ async def validate(root: Path, live_llm: bool, selected_model: str | None) -> No
                 {"arguments": arguments, "status": "passed", "facts": facts}
             )
             save()
+        for topic in ("progress", "secret_treasure", "schedule"):
+            result = await registry.invoke(
+                ToolInvocation(tool_name="zjcs_query", arguments={"query": topic}),
+                context,
+            )
+            assert result.success
+            facts = result.structured_content["facts"]
+            assert facts["status"] == "ok"
+            assert facts["as_of"] == report["test_date"]
+            report["rpc"].append(
+                {"arguments": {"query": topic}, "status": "passed", "facts": facts}
+            )
+            save()
         if live_llm:
             from src.llm_models.utils_model import LLMOrchestrator
             from src.llm_models.payload_content.context_item import (
@@ -251,6 +276,20 @@ async def validate(root: Path, live_llm: bool, selected_model: str | None) -> No
                 ),
                 ("赛季什么时候更新？", "next_season", None, season_date),
             ]
+            power_prompts = (
+                (
+                    "下个副本门槛多少？",
+                    "下个本要多少战力？",
+                    "下个副本需求战力是多少？",
+                    "下个本几战力能进？",
+                    "下一个副本战力要求呢？",
+                )
+                if power_queries
+                else ()
+            )
+            prompts.extend(
+                (text, "next_dungeon", None, dungeon_date) for text in power_prompts
+            )
             for prompt, topic, activity, expected in prompts:
                 item = {"prompt": prompt, "status": "pending"}
                 report["llm"].append(item)
@@ -258,8 +297,9 @@ async def validate(root: Path, live_llm: bool, selected_model: str | None) -> No
                 history = [
                     message(
                         RoleType.System,
-                        "你是《杖剑传说》公会助手。对游戏日期和进度问题，先查询可靠事实，"
-                        "不得猜测；拿到事实后用中文回答，并包含实际日期和距离天数。"
+                        "你是《杖剑传说》公会助手。对游戏事实问题，先查询可靠事实，"
+                        "不得猜测；拿到事实后用中文回答。日期问题包含实际日期和距离天数，"
+                        "战力问题按难度给出已确认的准入门槛，缺失难度不补猜。"
                         f"未知就说明不知道。本测试当前日期为{today.isoformat()}。",
                     ),
                     message(RoleType.User, prompt),
@@ -318,21 +358,40 @@ async def validate(root: Path, live_llm: bool, selected_model: str | None) -> No
                 )
                 assert not second.tool_calls
                 assert second.response
-                # Require the tool's date in the answer; do not grade style.
-                expected_day = date.fromisoformat(expected)
-                date_text = f"{expected_day.month}月{expected_day.day}"
-                assert (
-                    expected in second.response
-                    or date_text in second.response.replace(" ", "")
+                answer = (
+                    second.response.replace(" ", "").replace("**", "").replace(",", "")
                 )
-                days_text = f"{(expected_day - today).days}天"
-                assert days_text in second.response.replace(" ", "").replace("**", "")
+                if prompt in power_prompts:
+                    requirements = result.structured_content["facts"]["data"][
+                        "payload"
+                    ]["requirements"]
+                    assert requirements
+                    for difficulty, power in requirements.items():
+                        assert difficulty in answer
+                        assert str(power) in answer or f"{power / 10000:g}万" in answer
+                else:
+                    # Require tool facts in the answer; do not grade style.
+                    expected_day = date.fromisoformat(expected)
+                    date_text = f"{expected_day.month}月{expected_day.day}"
+                    assert expected in second.response or date_text in answer
+                    days_text = f"{(expected_day - today).days}天"
+                    assert days_text in answer
                 item.update(status="passed", calls=recorded, answer=second.response)
                 save()
         assert not list((root / "data").rglob("notification_state.json"))
-        assert (root / "plugins" / "zjcs_guild_notifier" / "config.toml").read_text(
-            encoding="utf-8"
-        ).find("enabled = true") >= 0
+        config = tomllib.loads(
+            (root / "plugins" / "zjcs_guild_notifier" / "config.toml").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert config["plugin"]["enabled"] is True
+        assert config["plugin"]["config_version"] == "1.5.0"
+        assert config["season_preparation"]["start_times"] == [
+            {"season": "S3", "start_datetime": report["test_season_start"]}
+        ]
+        report["config_migration"] = (
+            "1.4.0 -> 1.5.0; explicit season datetime preserved"
+        )
         report["notification_state_created"] = False
         report["status"] = "passed"
         save()
@@ -352,12 +411,24 @@ def main() -> int:
     parser.add_argument("--model-config", type=Path)
     parser.add_argument("--llm", action="store_true")
     parser.add_argument(
+        "--power-queries",
+        action="store_true",
+        help="Also test five colloquial dungeon power questions",
+    )
+    parser.add_argument(
         "--model-name", help="Existing configured model; defaults to planner"
     )
     parser.add_argument("--worker-root", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.worker_root:
-        asyncio.run(validate(args.worker_root.resolve(), args.llm, args.model_name))
+        asyncio.run(
+            validate(
+                args.worker_root.resolve(),
+                args.llm,
+                args.model_name,
+                args.power_queries,
+            )
+        )
         return 0
     if args.core_root is None or (args.llm and args.model_config is None):
         parser.error(
