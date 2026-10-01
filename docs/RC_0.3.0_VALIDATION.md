@@ -1,6 +1,12 @@
-# 0.3.0 DEV 开发与验证记录
+# 0.3.0 Release Candidate 验收记录
 
-本轮基于远程 main `d2bf4d480b5911cac43faeb91edad59ddb1a62df`。仅在 `DEV` 开发，未合并、未部署、未创建 Release 或 tag，等待外部 Review。旧 `feat/maibot-query-tools` 的本地及远程引用已删除，main 与 tags 不动。当前生产基线 0.2.0 / config 1.4.0 / state 2 由操作者提供，本轮未访问生产。
+更新时间：2026-10-02。
+
+合并前已核对 origin/main 为 `d2bf4d480b5911cac43faeb91edad59ddb1a62df`、origin/DEV 为 `d6344a5665fea5b8349611d5f85836ddd16ac15e`，没有漂移。已通过外部 Review 的主体实现 `ccb27513dba4250a24c7c264a84a7119487fce44` 和调度优化 `d6344a5665fea5b8349611d5f85836ddd16ac15e` 经 merge commit `f241c96b61fcf1b702e543f60bf646d9e7f9a46d` 合入 main，未 squash / rebase / amend，DEV 保留。
+
+main 当前为 **0.3.0 RC / config 1.5.0 / state 2**，plugin id 仍为 `zjcs.guild-notifier`；RC 是候选状态，manifest version 为 `0.3.0`。本轮仅合并并收口文档，runtime 与已 Review 的 DEV 完全一致，未继续开发业务功能。等待外部 RC Review，未部署、未创建 GitHub Release 或 tag。
+
+当前生产仍为 **0.2.0 / `d2bf4d480b5911cac43faeb91edad59ddb1a62df` / config 1.4.0 / state 2**，依据操作者提供的基线；本轮未访问或修改生产。
 
 ## 事实精度与边界
 
@@ -19,7 +25,7 @@
 - 准备窗口 `[start - 36h, start)`；重启和失败群允许在窗口内补齐，开始后不新发起发送。每次尝试及流解析完成后均检查过期，远端已接收的请求不能撤回。
 - 各群分别沿用 1/3/5 秒重试、流解析和肯定发送成功判定。新命名空间 key 包含事件 ID / UTC 开启瞬间 / 36h；成功群不重发，失败群可继续补齐。只改配置的偏移表示而保持相同瞬间，不会产生新 key。
 - state 继续为 2。所有历史 keys 保留，不新增迁移；文件坏数据时停止发送。磁盘写入失败时，本进程缓存肯定成功身份，并在后续窗口检查补写状态；持久化之前崩溃仍有重复风险，未引入投递事务。
-- config 1.4.0 → 1.5.0 通过既有 normalizer / SDK 重建补入默认空列表和独立开关；原群、管理员、日期、每日时间及六类提醒值保持。对象列表经真实 SDK rebuild 验证保留，重复 normalize 幂等。
+- config 1.4.0 → 1.5.0 通过既有 normalizer / SDK 重建补入默认 `start_times=[]` 和独立开关；原群、管理员、日期、每日时间及六类提醒值保持。对象列表经真实 SDK rebuild 验证保留，重复 normalize 幂等。升级本身不会自动产生赛季准备提醒；正式部署后，必须由操作者配置本服已确认的赛季 datetime，功能才会实际触发。
 - Tool 和命令仍只读查询，日期语义仍为自然日。没有新增 query type，副本门槛口语复用 `next_dungeon` 已有 requirements。未知 / 缺失难度不猜。
 
 ## 单元测试与质量检查
@@ -30,7 +36,7 @@
 
 ## 真实 Core / Runner / LLM 受控验收
 
-使用仓库 `scripts/validate_query_runtime.py`，将本地 Core Git HEAD 导出到私有临时目录，复制本分支插件五文件，启动真实第三方 Runner 与 Core ToolRegistry / PluginToolProvider；不启动完整 Bot Manager 或 Platform IO。通知目标空，无真实 QQ 发送。Core 源码不修改。
+主体实现阶段使用仓库 `scripts/validate_query_runtime.py`，将本地 Core Git HEAD 导出到私有临时目录，复制当时工作区的插件五文件，启动真实第三方 Runner 与 Core ToolRegistry / PluginToolProvider；不启动完整 Bot Manager 或 Platform IO。通知目标空，无真实 QQ 发送。Core 源码不修改。保留的 JSON 是主体实现 `ccb27513dba4250a24c7c264a84a7119487fce44` 阶段的历史证据，不是本轮重新运行的结果。
 
 环境：Core 1.2.2，commit `41406c8edf5a2b9f8041652835b236ed40aba513`；SDK 2.8.0。LLM 使用现有本地配置模型 `bailian-v4f-0731`，不改本地或生产模型配置。临时凭据副本在结束后删除，仓库证据仅保留脱离环境的事实、schema 和验收结果。
 
@@ -48,7 +54,13 @@ LLM 不强制 Tool choice：给出插件 schema 和禁止猜测的公会助手�
 
 针对基线 `ccb27513dba4250a24c7c264a84a7119487fce44` 的非阻塞效率问题，仅优化窗口前和工作完成后的等待。新增 6 项测试并强化 2 项既有断言，覆盖长等待取较早节点、精确秒唤醒、部分群失败补齐、状态写入失败不重发、完成后停止轮询、窗口截止和配置更新新增群；完整回归 316 项通过。plugin 0.3.0 / config 1.5.0 / state 2 不变。
 
-上述 Runner / LLM JSON 为优化前主体实现的受控验收证据，本轮未修改 Tool 或重跑 LLM；本轮调度变化由完整回归及新增 scheduler 测试验证。
+调度优化提交为 `d6344a5665fea5b8349611d5f85836ddd16ac15e`，已通过外部 Review。上述 Runner / LLM JSON 为优化前主体实现的受控验收证据；优化没有修改 Tool，其调度变化由完整回归及新增 scheduler 测试验证。
+
+## main RC 收口验证
+
+合并及文档收口后重新执行完整 pytest、`ruff check .`、`ruff format --check .` 和 `git diff --check`。同时逐文件比较 Git blob 与已 Review 的 `d6344a5665fea5b8349611d5f85836ddd16ac15e`，确认发布五文件、配置示例、runtime 验收脚本及全部测试文件未被收口修改。版本仍为 plugin 0.3.0 / config 1.5.0 / state 2，plugin id 不变。
+
+本轮没有修改 Tool/runtime，无需重复 Runner / LLM 集成测试；既有证据及适用范围保留。没有实际生产 QQ 验收，不声称 exactly-once。
 
 ## Review 重点
 

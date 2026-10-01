@@ -52,7 +52,9 @@ live production files == target Git commit bytes
 
 ## 部署文件范围
 
-0.2.0 RC 目前仅在 main 收口，未部署生产。该候选保持 config `1.4.0` / notification state `2`，无需配置或状态迁移，部署文件范围仍为下面 5 个文件。只有后续外部 Review 与部署任务明确授权后才能切换生产；本轮运行时验收均使用本地隔离环境，详见 [0.2.0 验收记录](docs/RC_0.2.0_VALIDATION.md)。
+main 当前候选为 **0.3.0 RC / config 1.5.0 / notification state 2**，尚未部署。当前生产仍为 **0.2.0 / `d2bf4d480b5911cac43faeb91edad59ddb1a62df` / config 1.4.0 / state 2**，依据操作者提供的基线，本轮未重新连接生产核验。部署文件范围仍为下面 5 个文件；只有后续外部 RC Review 与明确部署授权后才能切换生产。验收范围和边界见 [0.3.0 RC 验收记录](docs/RC_0.3.0_VALIDATION.md)，[0.2.0 RC 记录](docs/RC_0.2.0_VALIDATION.md)仅作历史参照。
+
+后续 0.3.0 部署会通过既有配置迁移将 config `1.4.0 → 1.5.0`，补入默认 `season_preparation.start_times=[]`，保留原配置值；state 仍为 `2`，无 state migration。升级本身不会自动产生赛季准备提醒；正式部署后必须由操作者配置本服已确认的赛季 datetime 才能触发，不能直接套用全局固定 08:00。不要清空通知历史；代码回滚默认保留当前 live state，避免删去新产生的 sent keys。
 
 插件发布仅包含：
 

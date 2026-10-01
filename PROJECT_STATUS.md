@@ -1,27 +1,29 @@
 # Project Status
 
-更新时间：2026-10-01
+更新时间：2026-10-02
 
 ## 当前阶段
 
-**DEV 开发候选为 0.3.0，等待外部 Review，未合入 main、未部署。**
+**main 当前候选为 0.3.0 RC / config 1.5.0 / state 2，等待外部 RC Review，尚未部署生产。**
 
-基于远程 main `d2bf4d480b5911cac43faeb91edad59ddb1a62df`，新增按本服确认 datetime 调度的赛季前 36 小时准备提醒，并完善既有 `zjcs_query / next_dungeon` 的副本战力口语描述。没有加入其他业务功能。config 升为 `1.5.0`，SDK 补齐默认空时刻列表，旧设置保留；state 保持 `2`，不迁移或清空历史 keys。
+已通过外部 Review 的 DEV 最终提交 `d6344a5665fea5b8349611d5f85836ddd16ac15e` 经独立 merge commit `f241c96b61fcf1b702e543f60bf646d9e7f9a46d` 合入 main，完整保留主体实现与调度优化两个提交。新增按本服确认 datetime 调度的赛季前 36 小时准备提醒，并完善既有 `zjcs_query / next_dungeon` 的副本战力口语描述；不引入关键词路由或第二套战力计算。RC 收口不改变已 Review 的 runtime。
 
-本轮按操作者要求删除旧开发分支 `feat/maibot-query-tools` 的本地与远程引用；所有开发仅在 `DEV`。未创建 Release 或 tag，未连接生产 QQ，MaiBot Core 只读。
+config 从 `1.4.0` 升为 `1.5.0`，默认 `season_preparation.start_times=[]`，旧设置保留；state 保持 `2`，不迁移或清空历史 keys。升级本身不会产生赛季准备提醒；正式部署后仍须操作者填写本服已确认的 datetime。不能将 08:00 作为所有赛季的固定规则。
 
-设计、事实依据与受控 Runner / LLM 结果见 [DEV 验收记录](docs/DEV_VALIDATION.md)。
+准备窗口为 `[season_start - 36h, season_start)`，按真实 elapsed 36h 计算；与每日 09:00 检查共用单一串行任务。窗口前和全部工作可靠落盘后长等待，只有窗口内失败群 / 落盘失败工作需要补齐，赛季开始后停止。每群独立去重；发送后、落盘前崩溃仍可能跨重启重复，不声称 exactly-once。Tool / 命令仍以自然日事实为主，精确 datetime 当前仅服务准备提醒。
+
+DEV 本地及远程分支保留到外部 Review 完成。未创建 Release 或 tag，未连接生产 QQ，未部署，MaiBot Core 只读。设计、事实依据和既有受控 Runner / LLM 结果见 [0.3.0 RC 验收记录](docs/RC_0.3.0_VALIDATION.md)；受控验收不等于真实生产 QQ 全覆盖。
 
 ## 生产版本事实
 
 以下为操作者在本轮任务提供的当前基线，本轮没有重新连接生产验证：
 
-- main / production commit：`d2bf4d480b5911cac43faeb91edad59ddb1a62df`
+- production commit：`d2bf4d480b5911cac43faeb91edad59ddb1a62df`（main 已合入 0.3.0 RC，生产未切换）
 - plugin version：`0.2.0`，plugin id `zjcs.guild-notifier`
 - config version：`1.4.0`
 - notification state version：`2`
 
-旧部署与 RC 文档保留为历史记录，不能将其中的 0.1.12 生产状态视为当前状态。此次开发不改变生产配置、state 或 reminders。
+旧部署与 RC 文档保留为历史记录，不能将其中的 0.1.12 生产状态视为当前状态。本轮合并与文档收口不改变生产配置、state 或 reminders。
 
 ## V1.2 能力摘要
 

@@ -173,7 +173,7 @@ season_anchor_date + season_day
 
 Tool 不访问发送接口、通知状态、调度或配置迁移；`command.admin_qqs` 仍只约束原命令。Tool 仅提供公开游戏事实，不使用当前 Core 中可由模型参数覆盖的上下文字段做管理员认证。工具按插件配置的公会服务器查询，未引入多服务器路由。
 
-## 精确赛季准备提醒（0.3.0 DEV）
+## 精确赛季准备提醒（0.3.0 RC）
 
 现有 timeline 的赛季节点是自然日，不足以推出精确小时。截图及社区作者资料支持部分服务器 08:00 的观察，不能证明全局固定规则。因此由操作者在 `season_preparation.start_times` 列表中填写本服确认的带偏移 datetime；列表默认空，不写入通用 08:00。输入必须匹配时间线按原日期模型算出的赛季日期，未知、冲突、重复或未确认事件跳过。
 
@@ -183,4 +183,4 @@ Tool 不访问发送接口、通知状态、调度或配置迁移；`command.adm
 
 config 升到 1.5.0，仅补入新配置节并保留旧配置。时刻采用 SDK 支持的对象列表，避免 SDK 2.8.0 升级重建会丢弃空默认字典中动态键的问题；列表项经真实重建路径测试保留。state 结构不变，不迁移。独立开关不依赖 `event_remind_day`。
 
-副本战力意图只增强现有 Tool 的 description / parameter description，仍使用 `next_dungeon` 及已有 `requirements`；不增加关键词路由、query type 或另一套战力逻辑。Tool 和命令的赛季查询继续是自然日精度，小时级时刻仅服务准备提醒。依据和验证见 [DEV 验收记录](docs/DEV_VALIDATION.md)。
+副本战力意图只增强现有 Tool 的 description / parameter description，仍使用 `next_dungeon` 及已有 `requirements`；不增加关键词路由、query type 或另一套战力逻辑。Tool 和命令的赛季查询继续是自然日精度，小时级时刻仅服务准备提醒。依据和验证见 [0.3.0 RC 验收记录](docs/RC_0.3.0_VALIDATION.md)。
