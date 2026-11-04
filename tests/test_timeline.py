@@ -2121,12 +2121,12 @@ def test_secret_treasure_explicit_pending_reward_is_not_guessed() -> None:
     assert "测试服奖励" not in text
 
 
-def test_secret_treasure_phase17_uses_fallback_category_only() -> None:
-    overview = _real_secret_treasure(today=date(2026, 11, 7))
+def test_secret_treasure_phase_beyond_explicit_uses_fallback_category_only() -> None:
+    overview = _real_secret_treasure(today=date(2027, 1, 30))
 
-    # Day 142：第 20 期开启日（Day 8 + 19×7 = 141 是第 20 期；Day 142 时当前期 20）
+    # Day 226：显式期数据只覆盖到第 29 期（Day 204），第 32 期（Day 225 起）仍走规则。
     assert overview.current_phase is not None
-    assert overview.current_phase.phase >= 17
+    assert overview.current_phase.phase == 32
     assert overview.current_phase.reward_mode == "rule_fallback"
 
     text = format_secret_treasure_overview(overview)

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
   "dataset_name": "杖剑传说通知Bot V1 数据集",
-  "generated_on": "2026-09-14",
+  "generated_on": "2026-11-04",
   "scope": {
     "v1_features": [
       "按服务器/赛季进度提前 N 天通知副本开放",
@@ -251,13 +251,15 @@
         "普通": 20000000,
         "困难": 26000000,
         "噩梦": 30000000,
-        "炼狱": 52000000
+        "炼狱": 46000000
       },
       "status": "confirmed",
       "sources": [
         "taptap_s3",
-        "gamekee_timeline"
-      ]
+        "gamekee_timeline",
+        "prod_timeline_screenshots_20261104"
+      ],
+      "notes": "2026-11-04 本服时间线截图校准：炼狱为 4600 万；此前记录的 5200 万是旧口径，已修正。"
     },
     {
       "id": "purification_court",
@@ -269,13 +271,15 @@
         "普通": 32500000,
         "困难": 43000000,
         "噩梦": 50500000,
-        "炼狱": 86000000
+        "炼狱": 75000000
       },
       "status": "confirmed",
       "sources": [
         "taptap_s3",
-        "gamekee_timeline"
-      ]
+        "gamekee_timeline",
+        "prod_timeline_screenshots_20261104"
+      ],
+      "notes": "2026-11-04 本服时间线截图校准：炼狱为 7500 万；此前记录的 8600 万是旧口径，已修正。"
     },
     {
       "id": "order_temple",
@@ -292,8 +296,10 @@
       "status": "confirmed",
       "sources": [
         "taptap_s3",
-        "gamekee_timeline"
-      ]
+        "gamekee_timeline",
+        "prod_timeline_screenshots_20261104"
+      ],
+      "notes": "2026-11-04 本服时间线截图与既有数值一致，仅补充第一事实来源。"
     },
     {
       "id": "blazing_sun_spire",
@@ -310,9 +316,10 @@
       "status": "confirmed_with_version_risk",
       "sources": [
         "taptap_s3",
-        "gamekee_timeline"
+        "gamekee_timeline",
+        "prod_timeline_screenshots_20261104"
       ],
-      "notes": "该副本历史上先遣服/正式服多次调门槛；这里采用 TapTap S3 图鉴页面当前值。"
+      "notes": "该副本历史上先遣服/正式服多次调门槛；2026-11-04 本服时间线截图确认当前值仍为 8450万/1亿/1.2亿/1.8亿。"
     },
     {
       "id": "sovereign_nest",
@@ -321,16 +328,18 @@
       "name": "君临之巢",
       "server_day": 197,
       "requirements": {
-        "普通": 130000000,
-        "困难": 150000000,
-        "噩梦": 190000000,
-        "炼狱": 310000000
+        "普通": 125000000,
+        "困难": 145000000,
+        "噩梦": 180000000,
+        "炼狱": 250000000,
+        "深渊": 350000000
       },
+      "deep_abyss_server_day": 204,
       "status": "confirmed_with_version_risk",
       "sources": [
-        "gamekee_timeline"
+        "prod_timeline_screenshots_20261104"
       ],
-      "notes": "战力值来自后期公开攻略口径；历史上存在 1.25/1.45/1.8/3.0 亿等旧版本数字，插件应允许数据热更新。"
+      "notes": "2026-11-04 本服时间线截图校准：普通/困难/噩梦/炼狱为 1.25/1.45/1.8/2.5 亿（此前 1.3/1.5/1.9/3.1 亿为旧口径，已修正）。深渊 3.5 亿在副本开启 7 天后（开服第 204 天）解锁，不以 Day197 立即开放；SSS 装备评级要求 1红4金。查询/提醒通过 deep_abyss 字段表达延迟解锁语义。"
     },
     {
       "id": "clockwork_tower",
@@ -757,25 +766,62 @@
       ]
     },
     {
+      "id": "pilgrimage_feather2_crimson_core",
+      "type": "pilgrimage_token",
+      "season": "S3",
+      "server_day": 141,
+      "name": "巡礼之证：羽2-赤红晶石（火亲和+攻击）",
+      "status": "confirmed",
+      "sources": [
+        "prod_timeline_screenshots_20261104"
+      ]
+    },
+    {
       "id": "feather_relic_2",
       "type": "relic_pool",
       "season": "S3",
       "server_day": 144,
-      "name": "羽国第二期遗物",
+      "name": "羽2遗物池-天穹圣约",
       "status": "confirmed",
       "sources": [
-        "gamekee_timeline"
-      ]
+        "gamekee_timeline",
+        "prod_timeline_screenshots_20261104"
+      ],
+      "notes": "2026-11-04 本服时间线截图校准为正式名称「天穹圣约」（TapTap 官方古遗物上新公告交叉一致）；保持稳定 event id。"
     },
     {
       "id": "rainbow_star_spirit",
       "type": "phantom_beast",
       "season": "S3",
       "server_day": 159,
-      "name": "虹彩星灵",
+      "name": "奇迹幻兽-虹彩星灵",
       "status": "confirmed",
       "sources": [
-        "gamekee_timeline"
+        "gamekee_timeline",
+        "prod_timeline_screenshots_20261104"
+      ],
+      "notes": "2026-11-04 本服时间线截图校准展示名称为「奇迹幻兽-虹彩星灵」；保持稳定 event id。"
+    },
+    {
+      "id": "pilgrimage_feather2_blue_moon_pendant",
+      "type": "pilgrimage_token",
+      "season": "S3",
+      "server_day": 155,
+      "name": "巡礼之证：羽2-蓝月吊坠（水亲和+防御）",
+      "status": "confirmed",
+      "sources": [
+        "prod_timeline_screenshots_20261104"
+      ]
+    },
+    {
+      "id": "pilgrimage_feather3_glory_star_emblem",
+      "type": "pilgrimage_token",
+      "season": "S3",
+      "server_day": 169,
+      "name": "巡礼之证：羽3-荣耀星徽（光庇护+生命）",
+      "status": "confirmed",
+      "sources": [
+        "prod_timeline_screenshots_20261104"
       ]
     },
     {
@@ -783,11 +829,47 @@
       "type": "relic_pool",
       "season": "S3",
       "server_day": 174,
-      "name": "羽国第三期遗物",
+      "name": "羽3遗物池-苍辉古律",
       "status": "confirmed",
       "sources": [
-        "gamekee_timeline"
+        "gamekee_timeline",
+        "prod_timeline_screenshots_20261104"
+      ],
+      "notes": "2026-11-04 本服时间线截图校准为正式名称「苍辉古律」（社区正式服资料交叉一致）；保持稳定 event id。"
+    },
+    {
+      "id": "pilgrimage_feather3_thousand_bird_knuckle",
+      "type": "pilgrimage_token",
+      "season": "S3",
+      "server_day": 183,
+      "name": "巡礼之证：羽3-千鸟指虎（风亲和+攻击）",
+      "status": "confirmed",
+      "sources": [
+        "prod_timeline_screenshots_20261104"
       ]
+    },
+    {
+      "id": "pilgrimage_feather3_eternal_fire_fang",
+      "type": "pilgrimage_token",
+      "season": "S3",
+      "server_day": 197,
+      "name": "巡礼之证：羽3-永火獠牙（火亲和+攻击）",
+      "status": "confirmed",
+      "sources": [
+        "prod_timeline_screenshots_20261104"
+      ]
+    },
+    {
+      "id": "unicom_double_buff",
+      "type": "double_buff",
+      "season": "S3",
+      "event_date": "2027-01-11",
+      "name": "【预计】联通助力双倍BUFF",
+      "status": "estimated",
+      "sources": [
+        "prod_timeline_screenshots_20261104"
+      ],
+      "notes": "截图来源自身明确标注【预计】：时间窗口为 1月11日8点 - 1月15日8点（本数据集按自然日建模为 2027-01-11 起）。estimated 状态不参与任何自动提醒、日程或进度查询，不得以确定口吻推送；人工确认后才能升级为 confirmed。影响范围（截图原文）：木床产量及储量、日常副本评级奖励及掉落奖励产量、体力恢复量及自然恢复上限、小推车产量及储量、命运之树果实产量及储量、公会挂机个人奖励产量、圣兽试炼/双影幻境/羁绊冒险奖励产量、公会讨伐/公会战/竞技场挑战奖励产量。"
     },
     {
       "id": "season_s4_start",
@@ -797,9 +879,10 @@
       "name": "S4 哈帕迪开启",
       "status": "confirmed",
       "sources": [
-        "taptap_s4"
+        "taptap_s4",
+        "prod_timeline_screenshots_20261104"
       ],
-      "notes": "按赛季锚点计算，不硬编码所有服务器绝对开服 Day。"
+      "notes": "按赛季锚点计算，不硬编码所有服务器绝对开服 Day。2026-11-04 本服截图确认 S3→S4 边界：S4 怪诞剧场在本服开服第 211 天（2027-01-15）开启；生产服务器应通过 season_dates.s4_start_date=2027-01-15 表达，不写入绝对 Day 规则。"
     },
     {
       "id": "absurd_paradise",
@@ -1119,21 +1202,178 @@
             "treasure_1_12",
             "treasure_cycle"
           ]
+        },
+        {
+          "phase": 20,
+          "server_day": 141,
+          "name": "秘宝大作战·第20期",
+          "featured_rewards": [
+            {
+              "name": "原初宝石-宝石",
+              "category": "special_relic",
+              "status": "confirmed"
+            },
+            {
+              "name": "贤者之石-石块",
+              "category": "special_relic",
+              "status": "confirmed"
+            }
+          ],
+          "status": "confirmed",
+          "sources": [
+            "prod_timeline_screenshots_20261104"
+          ]
+        },
+        {
+          "phase": 21,
+          "server_day": 148,
+          "name": "秘宝大作战·第21期",
+          "featured_reward": {
+            "name": "自选奇迹遗物箱·羽II",
+            "category": "relic_selector",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "prod_timeline_screenshots_20261104"
+          ]
+        },
+        {
+          "phase": 23,
+          "server_day": 162,
+          "name": "秘宝大作战·第23期",
+          "featured_reward": {
+            "name": "自选5阶技能碎片",
+            "amount": 180,
+            "category": "skill_fragments",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "prod_timeline_screenshots_20261104"
+          ]
+        },
+        {
+          "phase": 24,
+          "server_day": 169,
+          "name": "秘宝大作战·第24期",
+          "featured_rewards": [
+            {
+              "name": "原初宝石-宝石",
+              "category": "special_relic",
+              "status": "confirmed"
+            },
+            {
+              "name": "贤者之石-石块",
+              "category": "special_relic",
+              "status": "confirmed"
+            }
+          ],
+          "status": "confirmed",
+          "sources": [
+            "prod_timeline_screenshots_20261104"
+          ]
+        },
+        {
+          "phase": 25,
+          "server_day": 176,
+          "name": "秘宝大作战·第25期",
+          "featured_reward": {
+            "name": "自选奇迹遗物箱·羽III",
+            "category": "relic_selector",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "prod_timeline_screenshots_20261104"
+          ]
+        },
+        {
+          "phase": 26,
+          "server_day": 183,
+          "name": "秘宝大作战·第26期",
+          "featured_rewards": [
+            {
+              "name": "幸运神像-翻倍",
+              "category": "special_relic",
+              "status": "confirmed"
+            },
+            {
+              "name": "黄金神木-木材",
+              "category": "special_relic",
+              "status": "confirmed"
+            }
+          ],
+          "status": "confirmed",
+          "sources": [
+            "prod_timeline_screenshots_20261104"
+          ]
+        },
+        {
+          "phase": 27,
+          "server_day": 190,
+          "name": "秘宝大作战·第27期",
+          "featured_reward": {
+            "name": "自选5阶技能碎片",
+            "amount": 180,
+            "category": "skill_fragments",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "prod_timeline_screenshots_20261104"
+          ]
+        },
+        {
+          "phase": 28,
+          "server_day": 197,
+          "name": "秘宝大作战·第28期",
+          "featured_rewards": [
+            {
+              "name": "原初宝石-宝石",
+              "category": "special_relic",
+              "status": "confirmed"
+            },
+            {
+              "name": "贤者之石-石块",
+              "category": "special_relic",
+              "status": "confirmed"
+            }
+          ],
+          "status": "confirmed",
+          "sources": [
+            "prod_timeline_screenshots_20261104"
+          ]
+        },
+        {
+          "phase": 29,
+          "server_day": 204,
+          "name": "秘宝大作战·第29期",
+          "featured_reward": {
+            "name": "自选奇迹遗物箱·羽III",
+            "category": "relic_selector",
+            "status": "confirmed"
+          },
+          "status": "confirmed",
+          "sources": [
+            "prod_timeline_screenshots_20261104"
+          ]
         }
       ],
       "post_phase_16_rule": {
         "status": "rule_confirmed_reward_detail_dynamic",
         "pattern_categories": [
           "自选当期奇迹遗物箱",
-          "自选特殊遗物箱Ⅰ（幸运神像/黄金圣木/后续新增同类）",
+          "自选特殊遗物箱Ⅰ（幸运神像/黄金神木/后续新增同类）",
           "自选当前转职阶技能碎片×180",
           "自选特殊遗物箱Ⅱ（原初宝石/贤者之石/后续新增同类）"
         ],
-        "notes": "第17期后特殊遗物箱内容会扩充，不能仅按最初四个单品写死；通知展示应优先读取显式 phase 数据，缺失时再回退到规则。"
+        "notes": "第17期后特殊遗物箱内容会扩充，不能仅按最初四个单品写死；通知展示应优先读取显式 phase 数据，缺失时再回退到规则。2026-11-04 本服截图确认第26期两个重点大奖为「幸运神像-翻倍」与「黄金神木-木材」，规则类别描述中的旧写法「黄金圣木」已按截图与当期事实校准为「黄金神木」。第22期截图未完整显示，保持规则级 fallback，不猜具体大奖。"
       },
       "sources": [
         "treasure_cycle",
-        "treasure_1_21_preview"
+        "treasure_1_21_preview",
+        "prod_timeline_screenshots_20261104"
       ]
     },
     "weekly_side_activity_rotation": {
@@ -1144,9 +1384,10 @@
         "幸运刮刮乐",
         "菲涅克的谜题"
       ],
-      "notes": "从第15天开始，每7天一项，三种活动按上述顺序循环；期数各自独立递增。",
+      "notes": "从第15天开始，每7天一项，三种活动按上述顺序循环；期数各自独立递增。2026-11-04 本服截图已验证 S3 第21～30周（Day141～204）轮换与期数无偏移：宾果第7～10期、刮刮乐第7～9期、菲涅克第7～9期。",
       "sources": [
-        "qenu_timeline"
+        "qenu_timeline",
+        "prod_timeline_screenshots_20261104"
       ]
     }
   },
@@ -1240,6 +1481,11 @@
       "url": "https://www.taptap.cn/moment/844561211264598823",
       "kind": "taptap_recent",
       "notes": "玩家转载的定档资讯（9月24日开启），仅作官方公告之外的交叉验证，不作为独立事实来源。"
+    },
+    "prod_timeline_screenshots_20261104": {
+      "name": "杖剑工具·赛季时间线截图（当前生产服务器）",
+      "kind": "server_timeline_screenshot",
+      "notes": "2026-11-04（本服开服第 139 天，open_date 2026-06-19）运营者提供的 4 张『杖剑工具·赛季时间线』截图，覆盖 S3 Day141～207 及 S4 起点 Day211（2027-01-15）。对当前生产服务器属于第一事实来源：与仓库旧数据、旧攻略或社区时间线冲突时以截图为准；先遣服/测试服数据不得覆盖本来源。无公开 URL，为运营者本地截图。"
     }
   },
   "data_policy": {
@@ -1250,12 +1496,14 @@
       "社区时间线",
       "先遣服/测试服/预测"
     ],
+    "current_server_note": "运营者提供的本服当前时间线截图（prod_timeline_screenshots_20261104）视为该服务器的第一事实来源；2026-11-04 S3 校准以它为准，测试服/先遣服与旧攻略不得覆盖。",
     "statuses": {
       "confirmed": "可直接用于通知",
       "confirmed_partial": "已确认部分字段；缺失字段不要猜",
       "confirmed_with_version_risk": "公开来源明确，但历史上有频繁调数；应支持热更新",
-      "pending_formal_power": "只确认事件/副本存在，正式服战力未可靠确认"
+      "pending_formal_power": "只确认事件/副本存在，正式服战力未可靠确认",
+      "estimated": "来源自身标注【预计】/预测时间，未正式确认；不参与自动提醒、日程与进度查询，人工确认后才能升级为 confirmed"
     },
-    "rule": "任何 pending/测试服字段都不能以确定口吻推送给用户。"
+    "rule": "任何 pending/测试服/estimated 字段都不能以确定口吻推送给用户。"
   }
 }

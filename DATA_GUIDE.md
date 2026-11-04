@@ -38,6 +38,12 @@
 
 不得把缺失字段当确定信息通知。
 
+### `estimated`
+
+来源自身标注【预计】/预测时间（例如工具预测的联通助力双倍 BUFF），未正式确认。
+
+`estimated` 条目不参与任何自动提醒、日程与进度查询；人工确认后才能升级为 `confirmed`。
+
 ## 数据优先级
 
 维护数据时优先级建议：
@@ -49,6 +55,8 @@
 5. 先遣服 / 测试服 / 预测。
 
 测试服和预测不能覆盖已经确认的正式服数据。
+
+对本公会当前生产服务器：运营者提供的本服当前时间线截图（如 `prod_timeline_screenshots_20261104`，2026-11-04，开服第 139 天）属于该服务器的第一事实来源；仓库旧数据、旧攻略或社区时间线与之冲突时以截图为准。
 
 ## 日期模型
 
@@ -113,7 +121,9 @@ event_date = YYYY-MM-DD
 5. dungeon / event 的 `id` 全局唯一，且不得使用系统保留前缀（`secret_treasure_`、`weekly_side_activity_`）；
 6. 引用的 source key 必须已在 `sources` registry 注册；
 7. 秘宝 `known_phases` 的 phase 号唯一，显式 `server_day`（override）不得重复；
-8. 显式 `server_day` 是 override，优先于公式；歧义数据运行时不猜。
+8. 显式 `server_day` 是 override，优先于公式；歧义数据运行时不猜；
+9. 延迟解锁深渊字段 `deep_abyss_server_day` / `deep_abyss_season_day` 二选一、必须为正整数且晚于副本自身开放 day；存在时 `深渊` 门槛不进入常规 requirements 展示；
+10. 秘宝单期 `featured_reward` 与 `featured_rewards` 不得混写；`featured_rewards` 必须是非空数组，且每个条目都需非空 name 与可通知 status，否则整期 fail closed。
 
 ## 副本战力
 
@@ -137,6 +147,24 @@ event_date = YYYY-MM-DD
 
 通知时只遍历数据中实际存在的字段。
 
+### 延迟解锁的深渊难度
+
+部分最终副本（如 S3 君临之巢、S5 起源之门）的深渊难度在副本开启若干天后才解锁，不能写成 `requirements` 里的普通门槛——那会误导为开放日即可进入。
+
+延迟解锁使用独立字段，与副本日期模型同载体：
+
+```json
+{
+  "server_day": 197,
+  "requirements": { "普通": 125000000, "深渊": 350000000 },
+  "deep_abyss_server_day": 204
+}
+```
+
+- `deep_abyss_server_day`（服务器进度模型）或 `deep_abyss_season_day`（赛季进度模型）二选一，混写即歧义，运行时 fail closed；
+- 存在延迟字段时，`深渊` 门槛自动从常规 `requirements` 展示中剥离，单独以「深渊：X（日期 · 副本开启 N 天后解锁）」表达；
+- 完整性审计要求延迟字段合法且晚于副本自身开放 day。
+
 ## 秘宝大作战
 
 已确认基本规律：
@@ -144,9 +172,23 @@ event_date = YYYY-MM-DD
 - 开服第 8 天开始第一期；
 - 每 7 天一期。
 
-前 16 期重点大奖已经显式写入数据。
+前 16 期重点大奖已经显式写入数据；2026-11-04 本服截图校准后，第 20、21、23、24、25、26、27、28、29 期也已显式写入。第 17～19 期与第 22 期暂无可靠显式数据（第 22 期截图被裁切），保持规则级 fallback，不猜具体大奖。
 
 第 17 期后，特殊遗物箱内容开始扩充，因此不要把最初四种具体单品无限循环硬编码。
+
+部分期数截图明确列出两个重点大奖（如第 20 期「原初宝石-宝石 ｜ 贤者之石-石块」）。多奖励期使用 `featured_rewards` 数组（单奖励期继续使用 `featured_reward`，两者不得混写）：
+
+```json
+{
+  "phase": 20,
+  "featured_rewards": [
+    { "name": "原初宝石-宝石", "category": "special_relic", "status": "confirmed" },
+    { "name": "贤者之石-石块", "category": "special_relic", "status": "confirmed" }
+  ]
+}
+```
+
+运行时 payload 始终同时携带 `featured_reward`（首个重点奖励）以兼容既有展示路径；多奖励期额外携带 `featured_rewards` 完整列表。任一奖励条目不可靠时整期 fail closed，不部分展示。
 
 优先级：
 
