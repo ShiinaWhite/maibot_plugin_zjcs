@@ -473,7 +473,11 @@ def test_multi_reward_phase_fails_closed_without_leaking_names() -> None:
 
 
 def _deep_abyss_case_timeline(deep_fields: dict) -> dict:
-    """以君临之巢为模板构造带指定延迟深渊字段的独立副本数据。"""
+    """以君临之巢为模板构造带指定延迟深渊字段的独立副本数据。
+
+    覆盖项包含 ``season_day`` 时视为切换到赛季日期模型，模板的
+    ``server_day`` 随之移除，避免混写两种日期模型干扰被测行为。
+    """
 
     dungeon = {
         "id": "deep_case",
@@ -490,8 +494,15 @@ def _deep_abyss_case_timeline(deep_fields: dict) -> dict:
             "深渊": 350_000_000,
         },
     }
+    if "season_day" in deep_fields:
+        dungeon.pop("server_day")
     dungeon.update(deep_fields)
     return {"dungeons": [dungeon]}
+
+
+# season_day 模型反例使用该锚点：season_day 84 → 2027-01-01，与
+# server_day 反例同处 [2026-12-30, 2027-01-12] 查询/日程窗口内。
+MISMATCH_ANCHORS = {"S5": date(2026, 10, 10)}
 
 
 @pytest.mark.parametrize(
@@ -503,6 +514,14 @@ def _deep_abyss_case_timeline(deep_fields: dict) -> dict:
         ("invalid_zero", {"deep_abyss_server_day": 0}),
         ("not_after_open", {"deep_abyss_server_day": 197}),
         ("before_open", {"deep_abyss_server_day": 150}),
+        (
+            "season_model_with_server_carrier",
+            {"season": "S5", "season_day": 84, "deep_abyss_server_day": 204},
+        ),
+        (
+            "server_model_with_season_carrier",
+            {"deep_abyss_season_day": 91},
+        ),
     ],
 )
 def test_broken_deep_abyss_fails_closed_everywhere(
@@ -515,33 +534,49 @@ def test_broken_deep_abyss_fails_closed_everywhere(
     """
 
     timeline = _deep_abyss_case_timeline(deep_fields)
-    today = date(2026, 12, 30)  # Day 195：副本尚未开放。
+    today = date(2026, 12, 30)  # 副本尚未开放。
 
     # audit 必须报错。
     assert audit_timeline_integrity(timeline), case_id
 
     # /副本 与 next_dungeon facts：深渊不进普通 requirements，无延迟行。
-    entry = find_next_dungeon(timeline, today=today, open_date=OPEN_DATE)
+    entry = find_next_dungeon(
+        timeline,
+        today=today,
+        open_date=OPEN_DATE,
+        season_anchor_dates=MISMATCH_ANCHORS,
+    )
     assert entry is not None
     assert "深渊" not in entry.payload["requirements"]
     assert "deep_abyss" not in entry.payload
     assert "深渊：" not in format_next_dungeon(entry, today=today)
 
     facts = build_query_facts(
-        timeline, query="next_dungeon", today=today, open_date=OPEN_DATE
+        timeline,
+        query="next_dungeon",
+        today=today,
+        open_date=OPEN_DATE,
+        season_anchor_dates=MISMATCH_ANCHORS,
     )
     assert facts["status"] == "ok"
     assert "深渊" not in facts["data"]["payload"]["requirements"]
     assert "deep_abyss" not in facts["data"]["payload"]
 
     # schedule 与 reminder 同样不得暴露深渊门槛或延迟行。
-    schedule = build_upcoming_schedule(timeline, today=today, open_date=OPEN_DATE)
+    schedule = build_upcoming_schedule(
+        timeline, today=today, open_date=OPEN_DATE, season_anchor_dates=MISMATCH_ANCHORS
+    )
     assert len(schedule) == 1
     assert "深渊" not in schedule[0].payload["requirements"]
     assert "deep_abyss" not in schedule[0].payload
 
-    remind_today = date(2026, 12, 31)  # Day 196：默认提前 1 天提醒。
-    reminders = build_reminders(timeline, today=remind_today, open_date=OPEN_DATE)
+    remind_today = date(2026, 12, 31)  # 开放前 1 天，默认提前量。
+    reminders = build_reminders(
+        timeline,
+        today=remind_today,
+        open_date=OPEN_DATE,
+        season_anchor_dates=MISMATCH_ANCHORS,
+    )
     assert len(reminders) == 1
     assert "深渊" not in reminders[0].payload["requirements"]
     assert "deep_abyss" not in reminders[0].payload
@@ -564,3 +599,43 @@ def test_valid_deep_abyss_case_still_renders_delayed_unlock() -> None:
     assert "深渊：3.5亿（2027-01-08 · 副本开启 7 天后解锁）" in format_next_dungeon(
         entry, today=today
     )
+
+
+def test_audit_flags_deep_abyss_carrier_model_mismatch() -> None:
+    """深渊载体必须与副本本体日期模型一致，两个方向混用都要报 audit issue。"""
+
+    season_model = {
+        "id": "season_model_mismatch",
+        "season": "S5",
+        "name": "赛季模型副本",
+        "season_day": 84,
+        "status": "confirmed",
+        "requirements": {"普通": 1, "深渊": 2},
+        "deep_abyss_server_day": 204,
+    }
+    issues = "\n".join(audit_timeline_integrity({"dungeons": [season_model]}))
+    assert "deep_abyss_server_day 要求副本使用 server_day 日期模型" in issues
+
+    server_model = {
+        "id": "server_model_mismatch",
+        "name": "服务器模型副本",
+        "server_day": 197,
+        "status": "confirmed",
+        "requirements": {"普通": 1, "深渊": 2},
+        "deep_abyss_season_day": 91,
+    }
+    issues = "\n".join(audit_timeline_integrity({"dungeons": [server_model]}))
+    assert "deep_abyss_season_day 要求副本使用 season_day 日期模型" in issues
+
+    # 两个方向在 runtime 同样 fail closed：深渊剥离、无延迟 payload。
+    for broken in (season_model, server_model):
+        timeline = {"dungeons": [dict(broken)]}
+        entry = find_next_dungeon(
+            timeline,
+            today=date(2026, 12, 30),
+            open_date=OPEN_DATE,
+            season_anchor_dates=MISMATCH_ANCHORS,
+        )
+        assert entry is not None
+        assert "深渊" not in entry.payload["requirements"]
+        assert "deep_abyss" not in entry.payload

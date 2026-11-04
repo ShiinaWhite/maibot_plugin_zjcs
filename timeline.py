@@ -1809,9 +1809,10 @@ def _deep_abyss_status(item: Mapping[str, Any]) -> str:
     """判定延迟深渊配置：absent / valid / broken。
 
     只要数据声称存在延迟深渊（任一载体字段出现），就绝不返回
-    absent：载体混写、字段非法或不晚于副本开放 day 均为 broken，
-    调用方必须 fail closed——隐藏不可靠的延迟信息，也不得把深渊
-    退化成“与普通难度同日开放”的普通门槛。
+    absent：载体混写、载体与副本本体日期模型不一致、字段非法或
+    不晚于副本开放 day 均为 broken，调用方必须 fail closed——隐藏
+    不可靠的延迟信息，也不得把深渊退化成“与普通难度同日开放”
+    的普通门槛。跨日期模型不做换算、不猜测。
     """
 
     has_server = "deep_abyss_server_day" in item
@@ -1821,12 +1822,15 @@ def _deep_abyss_status(item: Mapping[str, Any]) -> str:
     if has_server and has_season:
         # 两种载体混写即歧义。
         return DEEP_ABYSS_BROKEN
-    deep_day = _positive_int(
-        item.get("deep_abyss_server_day" if has_server else "deep_abyss_season_day")
-    )
+    expected_model = "server_day" if has_server else "season_day"
+    # 载体必须与副本本体日期模型一致，否则延迟 day 属于不同的
+    # 时间坐标系，无法安全表达解锁语义。
+    if _timeline_date_model(item) != expected_model:
+        return DEEP_ABYSS_BROKEN
+    deep_day = _positive_int(item.get(f"deep_abyss_{expected_model}"))
     if deep_day is None:
         return DEEP_ABYSS_BROKEN
-    base = _positive_int(item.get("server_day" if has_server else "season_day"))
+    base = _positive_int(item.get(expected_model))
     if base is not None and deep_day <= base:
         # 延迟解锁必须晚于副本自身开放 day，否则语义不成立。
         return DEEP_ABYSS_BROKEN
@@ -2168,22 +2172,25 @@ def _audit_deep_abyss_fields(
     item: Mapping[str, Any],
     issues: list[str],
 ) -> None:
-    """延迟解锁深渊字段：载体唯一、合法，且必须晚于副本自身开放 day。"""
+    """延迟解锁深渊字段：载体唯一、合法、与副本日期模型一致且晚于开放 day。"""
 
     present_keys = [
         key for key in ("deep_abyss_server_day", "deep_abyss_season_day") if key in item
     ]
     if len(present_keys) > 1:
         issues.append(f"{label}: 深渊延迟解锁载体不得混写")
+    date_model = _timeline_date_model(item)
     for key in present_keys:
         value = _positive_int(item.get(key))
         if value is None:
             issues.append(f"{label}: {key} 如果存在必须是正整数")
             continue
-        base_key = "server_day" if key.endswith("server_day") else "season_day"
-        base = _positive_int(item.get(base_key))
+        expected_model = "server_day" if key.endswith("server_day") else "season_day"
+        if date_model != expected_model:
+            issues.append(f"{label}: {key} 要求副本使用 {expected_model} 日期模型")
+        base = _positive_int(item.get(expected_model))
         if base is not None and value <= base:
-            issues.append(f"{label}: {key} 必须晚于副本开放 {base_key}")
+            issues.append(f"{label}: {key} 必须晚于副本开放 {expected_model}")
 
 
 def _audit_source_references(
