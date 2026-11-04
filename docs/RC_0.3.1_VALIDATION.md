@@ -14,7 +14,7 @@
 
 ## 版本与兼容契约
 
-- plugin version：`0.3.0 → 0.3.1`，仅修改 `_manifest.json` 的 version 字段与 `tests/test_release_candidate.py` 的对应断言；
+- plugin version：`0.3.0 → 0.3.1`，仅修改 `_manifest.json` 的 version 字段，并同步更新 `tests/test_manifest.py` 与 `tests/test_release_candidate.py` 的对应版本断言；
 - plugin id 保持 `zjcs.guild-notifier`；
 - config schema 保持 `1.5.0`，state schema 保持 `2`，本轮无任何 config / state migration；
 - 提醒提前量、per-group dedupe、发送 retry、36 小时赛季准备提醒、`zjcs_query` 行为与 Tool schema 均与已 Review 的 DEV 完全一致。
