@@ -2,11 +2,11 @@
 
 《杖剑传说》MaiBot 公会助手插件。
 
-`杖剑助手` 是一个运行在 [MaiBot](https://github.com/MaiM-with-u/MaiBot) 上的插件（plugin id：`zjcs.guild-notifier`，main 当前候选版本 `0.3.0 RC`；当前生产版本与验收状态见 [PROJECT_STATUS.md](PROJECT_STATUS.md)），基于 MaiBot Plugin SDK 实现。它提供自然语言对话可调用的只读游戏事实查询，并根据本地维护的《杖剑传说》时间线数据，每天定时检查服务器进度，提前向公会 QQ 群发送副本、活动和重要事件通知。
+`杖剑助手` 是一个运行在 [MaiBot](https://github.com/MaiM-with-u/MaiBot) 上的插件（plugin id：`zjcs.guild-notifier`，当前生产版本 `0.3.0`，生产 commit `db97e8f`；当前生产与 DEV 状态见 [PROJECT_STATUS.md](PROJECT_STATUS.md)），基于 MaiBot Plugin SDK 实现。它提供自然语言对话可调用的只读游戏事实查询，并根据本地维护的《杖剑传说》时间线数据，每天定时检查服务器进度，提前向公会 QQ 群发送副本、活动和重要事件通知。
 
 项目从公会真实需求出发，当前核心能力是服务器进度 / 活动 / 副本通知；未来会按公会实际使用需求继续扩展其他实用功能，不会永久限定为通知插件。
 
-## 当前仓库能力（0.3.0 RC）
+## 当前仓库能力（0.3.0）
 
 - **绝对日历事件**：全服同一自然日开启的联动、节日等可使用 `event_date`，不随服务器开服日漂移；
 
@@ -78,7 +78,7 @@ admin_qqs = []
 - 时区内部固定使用 `Asia/Shanghai`，WebUI 中隐藏，无需修改；
 - `season_dates.s4/s5/s6_start_date` 在对应赛季开始前留空即可。
 
-## 赛季前 36 小时准备提醒（0.3.0 RC）
+## 赛季前 36 小时准备提醒（0.3.0）
 
 确认本服的赛季开启时刻后，单独配置精确提醒；以下仅为日期一致时的示例，**不是所有赛季固定 08:00 的规则**：
 
@@ -96,7 +96,7 @@ start_times = [{ season = "S3", start_datetime = "2026-10-10T08:00:00+08:00" }]
 
 按群持久化去重键包含赛季事件 ID、UTC 开启瞬间和 `36h`，state 继续为版本 2，历史记录保留。相同瞬间的不同偏移写法不会重复；修改开启瞬间会构成新通知。确认发送后如果磁盘写入失败，本进程只重试状态写入；若在成功持久化之前崩溃，跨重启仍可能重复，这与发送和文件写入不能组成事务的边界一致，不声称 exactly-once。
 
-config `1.4.0` 自动补齐新节并升到 `1.5.0`，保留旧目标群、管理员、日期、09:00 和六类提前天数；默认 `start_times=[]` 确保迁移本身不引入新发送；正式部署后，必须由操作者配置本服已确认的赛季 datetime 才会实际触发。Tool / 命令继续按自然日查询，尚不提供本节的小时级倒计时，查询不会生成准备通知。事实模型依据与测试记录见 [0.3.0 RC 验收记录](docs/RC_0.3.0_VALIDATION.md)。
+config `1.4.0` 自动补齐新节并升到 `1.5.0`，保留旧目标群、管理员、日期、09:00 和六类提前天数；默认 `start_times=[]` 确保迁移本身不引入新发送；生产部署（2026-10-02）已应用该迁移，操作者配置本服已确认的赛季 datetime 后才会实际触发。Tool / 命令继续按自然日查询，尚不提供本节的小时级倒计时，查询不会生成准备通知。事实模型依据与测试记录见 [0.3.0 RC 验收记录](docs/RC_0.3.0_VALIDATION.md)。
 
 ## 数据来源原则
 
@@ -143,7 +143,7 @@ config `1.4.0` 自动补齐新节并升到 `1.5.0`，保留旧目标群、管理
 
 工具通过 `visibility="visible"` 声明首轮 LLM 可见；模型是否实际选用仍由 MaiBot 决定。MaiBot Runner 必须实际激活插件（`plugin.enabled=true`），禁用插件时不会注册工具。`target.group_ids=[]` 可在不配置自动提醒投递目标的情况下使用查询工具。
 
-当前 main 候选为 **0.3.0 RC / config 1.5.0 / state 2**，已通过外部 Review 的 DEV 主体实现与调度优化已通过独立 merge commit 合入，等待外部 RC Review，尚未部署生产。当前生产仍为 **0.2.0 / `d2bf4d480b5911cac43faeb91edad59ddb1a62df` / config 1.4.0 / state 2**（操作者提供的基线，本轮未连接生产）。DEV 分支保留，未创建 GitHub Release 或 tag。受控验收见 [0.3.0 RC 验收记录](docs/RC_0.3.0_VALIDATION.md)；这些结果不等于真实生产 QQ 全覆盖。历史验收见 [0.2.0 RC 记录](docs/RC_0.2.0_VALIDATION.md)。
+当前生产为 **0.3.0 / commit `db97e8f75275894ea4aad0ade0c57b0c513291c6` / config 1.5.0 / state 2**（2026-10-02 部署并完成技术验收）。DEV 分支包含尚未 merge、尚未部署的 S3 时间线校准与延迟深渊 fail-closed 修复；DEV 内容未创建 GitHub Release 或 tag。0.3.0 的受控验收见 [0.3.0 RC 验收记录](docs/RC_0.3.0_VALIDATION.md)；这些结果不等于真实生产 QQ 全覆盖。历史验收见 [0.2.0 RC 记录](docs/RC_0.2.0_VALIDATION.md)。
 
 ## 开发文档导航
 

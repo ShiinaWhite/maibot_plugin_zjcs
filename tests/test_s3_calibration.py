@@ -8,6 +8,8 @@
 
 from datetime import date, timedelta
 
+import pytest
+
 from timeline import (
     NOTIFIABLE_STATUSES,
     audit_timeline_integrity,
@@ -18,6 +20,7 @@ from timeline import (
     build_upcoming_schedule,
     calculate_event_date,
     find_next_dungeon,
+    format_daily_reminders,
     format_next_dungeon,
     format_secret_treasure_overview,
     load_timeline,
@@ -467,3 +470,97 @@ def test_multi_reward_phase_fails_closed_without_leaking_names() -> None:
     }
     issues = "\n".join(audit_timeline_integrity(_timeline_with(empty)))
     assert "featured_rewards 必须是非空数组" in issues
+
+
+def _deep_abyss_case_timeline(deep_fields: dict) -> dict:
+    """以君临之巢为模板构造带指定延迟深渊字段的独立副本数据。"""
+
+    dungeon = {
+        "id": "deep_case",
+        "season": "S3",
+        "region": "羽之国",
+        "name": "延迟解锁测试副本",
+        "server_day": 197,
+        "status": "confirmed",
+        "requirements": {
+            "普通": 125_000_000,
+            "困难": 145_000_000,
+            "噩梦": 180_000_000,
+            "炼狱": 250_000_000,
+            "深渊": 350_000_000,
+        },
+    }
+    dungeon.update(deep_fields)
+    return {"dungeons": [dungeon]}
+
+
+@pytest.mark.parametrize(
+    ("case_id", "deep_fields"),
+    [
+        ("mixed_carriers", {"deep_abyss_server_day": 204, "deep_abyss_season_day": 91}),
+        ("invalid_bool", {"deep_abyss_server_day": True}),
+        ("invalid_string", {"deep_abyss_server_day": "204"}),
+        ("invalid_zero", {"deep_abyss_server_day": 0}),
+        ("not_after_open", {"deep_abyss_server_day": 197}),
+        ("before_open", {"deep_abyss_server_day": 150}),
+    ],
+)
+def test_broken_deep_abyss_fails_closed_everywhere(
+    case_id: str, deep_fields: dict
+) -> None:
+    """延迟深渊配置损坏时，任何出口都不得把它当成开放日普通门槛。
+
+    不变量：只要数据声称“深渊是延迟解锁难度”，即使延迟字段坏掉，
+    也绝不能退化成“深渊与普通难度同日开放”。
+    """
+
+    timeline = _deep_abyss_case_timeline(deep_fields)
+    today = date(2026, 12, 30)  # Day 195：副本尚未开放。
+
+    # audit 必须报错。
+    assert audit_timeline_integrity(timeline), case_id
+
+    # /副本 与 next_dungeon facts：深渊不进普通 requirements，无延迟行。
+    entry = find_next_dungeon(timeline, today=today, open_date=OPEN_DATE)
+    assert entry is not None
+    assert "深渊" not in entry.payload["requirements"]
+    assert "deep_abyss" not in entry.payload
+    assert "深渊：" not in format_next_dungeon(entry, today=today)
+
+    facts = build_query_facts(
+        timeline, query="next_dungeon", today=today, open_date=OPEN_DATE
+    )
+    assert facts["status"] == "ok"
+    assert "深渊" not in facts["data"]["payload"]["requirements"]
+    assert "deep_abyss" not in facts["data"]["payload"]
+
+    # schedule 与 reminder 同样不得暴露深渊门槛或延迟行。
+    schedule = build_upcoming_schedule(timeline, today=today, open_date=OPEN_DATE)
+    assert len(schedule) == 1
+    assert "深渊" not in schedule[0].payload["requirements"]
+    assert "deep_abyss" not in schedule[0].payload
+
+    remind_today = date(2026, 12, 31)  # Day 196：默认提前 1 天提醒。
+    reminders = build_reminders(timeline, today=remind_today, open_date=OPEN_DATE)
+    assert len(reminders) == 1
+    assert "深渊" not in reminders[0].payload["requirements"]
+    assert "deep_abyss" not in reminders[0].payload
+    daily_text = format_daily_reminders(reminders, today=remind_today)
+    assert "深渊：" not in daily_text
+
+
+def test_valid_deep_abyss_case_still_renders_delayed_unlock() -> None:
+    """对照：同一模板上的合法配置仍完整表达延迟语义，不受 broken 分支影响。"""
+
+    timeline = _deep_abyss_case_timeline({"deep_abyss_server_day": 204})
+    today = date(2026, 12, 30)
+
+    assert audit_timeline_integrity(timeline) == []
+    entry = find_next_dungeon(timeline, today=today, open_date=OPEN_DATE)
+    assert entry.payload["deep_abyss"]["unlock_server_day"] == 204
+    assert entry.payload["deep_abyss"]["unlock_date"] == "2027-01-08"
+    assert entry.payload["deep_abyss"]["days_after_open"] == 7
+    assert "深渊" not in entry.payload["requirements"]
+    assert "深渊：3.5亿（2027-01-08 · 副本开启 7 天后解锁）" in format_next_dungeon(
+        entry, today=today
+    )

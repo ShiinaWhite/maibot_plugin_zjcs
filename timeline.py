@@ -1800,13 +1800,47 @@ def _build_reminder(
     )
 
 
+DEEP_ABYSS_ABSENT = "absent"
+DEEP_ABYSS_VALID = "valid"
+DEEP_ABYSS_BROKEN = "broken"
+
+
+def _deep_abyss_status(item: Mapping[str, Any]) -> str:
+    """判定延迟深渊配置：absent / valid / broken。
+
+    只要数据声称存在延迟深渊（任一载体字段出现），就绝不返回
+    absent：载体混写、字段非法或不晚于副本开放 day 均为 broken，
+    调用方必须 fail closed——隐藏不可靠的延迟信息，也不得把深渊
+    退化成“与普通难度同日开放”的普通门槛。
+    """
+
+    has_server = "deep_abyss_server_day" in item
+    has_season = "deep_abyss_season_day" in item
+    if not has_server and not has_season:
+        return DEEP_ABYSS_ABSENT
+    if has_server and has_season:
+        # 两种载体混写即歧义。
+        return DEEP_ABYSS_BROKEN
+    deep_day = _positive_int(
+        item.get("deep_abyss_server_day" if has_server else "deep_abyss_season_day")
+    )
+    if deep_day is None:
+        return DEEP_ABYSS_BROKEN
+    base = _positive_int(item.get("server_day" if has_server else "season_day"))
+    if base is not None and deep_day <= base:
+        # 延迟解锁必须晚于副本自身开放 day，否则语义不成立。
+        return DEEP_ABYSS_BROKEN
+    return DEEP_ABYSS_VALID
+
+
 def _confirmed_requirements(item: Mapping[str, Any]) -> dict[str, object]:
     if item.get("status") == "pending_formal_power":
         return {}
 
-    # 存在延迟解锁字段时，深渊门槛不属于副本开放日即可进入的内容，
-    # 必须从常规 requirements 中剥离，避免把 Day197 开放表达成深渊同日可进。
-    delayed = _deep_abyss_day(item) is not None
+    # 数据声称存在延迟深渊时（无论配置本身是否可靠），深渊门槛都不属于
+    # 副本开放日即可进入的内容，必须从常规 requirements 中剥离；
+    # 延迟字段本身损坏时同样剥离并隐藏延迟信息，fail closed 不猜测。
+    delayed = _deep_abyss_status(item) != DEEP_ABYSS_ABSENT
     requirements = item.get("requirements")
     if not isinstance(requirements, Mapping):
         return {}
@@ -1817,28 +1851,18 @@ def _confirmed_requirements(item: Mapping[str, Any]) -> dict[str, object]:
     }
 
 
-def _deep_abyss_day(item: Mapping[str, Any]) -> int | None:
-    """延迟解锁深渊所在 day；server_day/season_day 两种载体混写即歧义。"""
-
-    server_day = _positive_int(item.get("deep_abyss_server_day"))
-    season_day = _positive_int(item.get("deep_abyss_season_day"))
-    if server_day is not None and season_day is not None:
-        return None
-    return server_day if server_day is not None else season_day
-
-
 def _deep_abyss_payload(
     item: Mapping[str, Any],
     *,
     open_date: date | None,
     anchors: Mapping[str, date],
 ) -> dict[str, Any] | None:
-    """构建延迟解锁深渊的 payload；无延迟数据或载体混写时返回 None。"""
+    """构建延迟解锁深渊的 payload；仅可靠（valid）配置才生成。"""
 
+    if _deep_abyss_status(item) != DEEP_ABYSS_VALID:
+        return None
     server_day = _positive_int(item.get("deep_abyss_server_day"))
     season_day = _positive_int(item.get("deep_abyss_season_day"))
-    if (server_day is None) == (season_day is None):
-        return None
 
     raw_requirements = item.get("requirements")
     requirements: dict[str, object] = {}

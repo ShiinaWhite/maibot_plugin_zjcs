@@ -2,6 +2,8 @@
 
 更新时间：2026-10-02。
 
+> 状态注记（2026-11-04）：本文是 0.3.0 部署前的 RC 验收历史记录，文中「未部署 / 当前生产 0.2.0」等表述仅代表记录时点。0.3.0（commit `db97e8f`）已于 2026-10-02 正式部署并完成技术验收；当前状态以 [PROJECT_STATUS.md](../PROJECT_STATUS.md) 为准。
+
 合并前已核对 origin/main 为 `d2bf4d480b5911cac43faeb91edad59ddb1a62df`、origin/DEV 为 `d6344a5665fea5b8349611d5f85836ddd16ac15e`，没有漂移。已通过外部 Review 的主体实现 `ccb27513dba4250a24c7c264a84a7119487fce44` 和调度优化 `d6344a5665fea5b8349611d5f85836ddd16ac15e` 经 merge commit `f241c96b61fcf1b702e543f60bf646d9e7f9a46d` 合入 main，未 squash / rebase / amend，DEV 保留。
 
 main 当前为 **0.3.0 RC / config 1.5.0 / state 2**，plugin id 仍为 `zjcs.guild-notifier`；RC 是候选状态，manifest version 为 `0.3.0`。本轮仅合并并收口文档，runtime 与已 Review 的 DEV 完全一致，未继续开发业务功能。等待外部 RC Review，未部署、未创建 GitHub Release 或 tag。
