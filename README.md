@@ -2,7 +2,7 @@
 
 《杖剑传说》MaiBot 公会助手插件。
 
-`杖剑助手` 是一个运行在 [MaiBot](https://github.com/MaiM-with-u/MaiBot) 上的插件（plugin id：`zjcs.guild-notifier`，当前生产版本 `0.3.0`，生产 commit `db97e8f`；当前生产与 DEV 状态见 [PROJECT_STATUS.md](PROJECT_STATUS.md)），基于 MaiBot Plugin SDK 实现。它提供自然语言对话可调用的只读游戏事实查询，并根据本地维护的《杖剑传说》时间线数据，每天定时检查服务器进度，提前向公会 QQ 群发送副本、活动和重要事件通知。
+`杖剑助手` 是一个运行在 [MaiBot](https://github.com/MaiM-with-u/MaiBot) 上的插件（plugin id：`zjcs.guild-notifier`，当前生产版本 `0.3.0`；main 已收口为 0.3.1 RC，尚未部署；当前生产与 RC 状态见 [PROJECT_STATUS.md](PROJECT_STATUS.md)），基于 MaiBot Plugin SDK 实现。它提供自然语言对话可调用的只读游戏事实查询，并根据本地维护的《杖剑传说》时间线数据，每天定时检查服务器进度，提前向公会 QQ 群发送副本、活动和重要事件通知。
 
 项目从公会真实需求出发，当前核心能力是服务器进度 / 活动 / 副本通知；未来会按公会实际使用需求继续扩展其他实用功能，不会永久限定为通知插件。
 
@@ -143,7 +143,7 @@ config `1.4.0` 自动补齐新节并升到 `1.5.0`，保留旧目标群、管理
 
 工具通过 `visibility="visible"` 声明首轮 LLM 可见；模型是否实际选用仍由 MaiBot 决定。MaiBot Runner 必须实际激活插件（`plugin.enabled=true`），禁用插件时不会注册工具。`target.group_ids=[]` 可在不配置自动提醒投递目标的情况下使用查询工具。
 
-当前生产为 **0.3.0 / commit `db97e8f75275894ea4aad0ade0c57b0c513291c6` / config 1.5.0 / state 2**（2026-10-02 部署并完成技术验收）。DEV 分支包含尚未 merge、尚未部署的 S3 时间线校准与延迟深渊 fail-closed 修复；DEV 内容未创建 GitHub Release 或 tag。0.3.0 的受控验收见 [0.3.0 RC 验收记录](docs/RC_0.3.0_VALIDATION.md)；这些结果不等于真实生产 QQ 全覆盖。历史验收见 [0.2.0 RC 记录](docs/RC_0.2.0_VALIDATION.md)。
+当前生产为 **0.3.0 / commit `db97e8f75275894ea4aad0ade0c57b0c513291c6` / config 1.5.0 / state 2**（2026-10-02 部署并完成技术验收）。main 已收口为 **0.3.1 RC**：S3 时间线校准、秘宝多奖励、延迟深渊模型及 fail-closed 修复已经外部 Review 合入，plugin version 升为 `0.3.1`，尚未部署。0.3.1 RC 的内容与验证见 [0.3.1 RC 验收记录](docs/RC_0.3.1_VALIDATION.md)；0.3.0 的受控验收见 [0.3.0 RC 验收记录](docs/RC_0.3.0_VALIDATION.md)，这些结果不等于真实生产 QQ 全覆盖；历史验收见 [0.2.0 RC 记录](docs/RC_0.2.0_VALIDATION.md)。
 
 ## 开发文档导航
 

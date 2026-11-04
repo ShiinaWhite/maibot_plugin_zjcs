@@ -52,7 +52,7 @@ live production files == target Git commit bytes
 
 ## 部署文件范围
 
-当前生产为 **0.3.0 / commit `db97e8f75275894ea4aad0ade0c57b0c513291c6` / config 1.5.0 / notification state 2**，已于 2026-10-02 完成部署与技术验收（config 在部署时由 1.4.0 自动迁移，state 无 migration，历史 sent keys 完整）。DEV 分支上的 S3 时间线校准与延迟深渊 fail-closed 修复尚未 merge、尚未部署；只有通过外部 Review 并获得明确部署授权后才能切换生产。验收范围和边界见 [0.3.0 RC 验收记录](docs/RC_0.3.0_VALIDATION.md)，[0.2.0 RC 记录](docs/RC_0.2.0_VALIDATION.md)仅作历史参照。
+当前生产为 **0.3.0 / commit `db97e8f75275894ea4aad0ade0c57b0c513291c6` / config 1.5.0 / notification state 2**，已于 2026-10-02 完成部署与技术验收（config 在部署时由 1.4.0 自动迁移，state 无 migration，历史 sent keys 完整）。main 已收口为 **0.3.1 RC**（S3 时间线校准、秘宝多奖励、延迟深渊模型及 fail-closed 修复经外部 Review 合入，plugin version 升为 `0.3.1`），尚未部署；只有通过外部 RC Review 并获得明确部署授权后才能切换生产。本轮无 config / state migration。0.3.1 RC 的内容与验证见 [0.3.1 RC 验收记录](docs/RC_0.3.1_VALIDATION.md)；0.3.0 验收见 [0.3.0 RC 验收记录](docs/RC_0.3.0_VALIDATION.md)，[0.2.0 RC 记录](docs/RC_0.2.0_VALIDATION.md)仅作历史参照。
 
 0.3.0 部署已通过既有配置迁移将 config `1.4.0 → 1.5.0`，补入默认 `season_preparation.start_times=[]` 并保留原配置值；state 仍为 `2`，无 state migration。升级本身不会自动产生赛季准备提醒；操作者配置本服已确认的赛季 datetime 后才能触发，不能直接套用全局固定 08:00。不要清空通知历史；代码回滚默认保留当前 live state，避免删去新产生的 sent keys。
 

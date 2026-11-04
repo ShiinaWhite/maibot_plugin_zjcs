@@ -4,19 +4,21 @@
 
 ## 当前阶段
 
-**当前生产为 0.3.0（commit `db97e8f`，2026-10-02 部署并完成技术验收）；DEV 分支的 S3 时间线校准（`4911a749` 及其后续修复 commit）尚未 merge、尚未部署。**
+**main 已收口为 0.3.1 Release Candidate（S3 校准内容经外部 Review 后合入，plugin version 升为 `0.3.1`），等待外部 RC Review；当前生产仍为 0.3.0，尚未部署 0.3.1。**
 
-2026-11-04 校准轮：以运营者提供的 4 张本服『杖剑工具·赛季时间线』截图（开服第 139 天）为第一事实来源，修正战渊堡垒炼狱 4600 万（原 5200 万）、净化之庭炼狱 7500 万（原 8600 万）、君临之巢 1.25/1.45/1.8/2.5 亿（原 1.3/1.5/1.9/3.1 亿）+ 深渊 3.5 亿（副本开启 7 天后、开服第 204 天解锁）；羽2/羽3遗物池与奇迹幻兽校准为正式名称（event id 保持不变）；第 20～29 期秘宝（除第 22 期截图缺失保持 fallback）写入显式奖励，多奖励期新增 `featured_rewards` 结构；补录 S3 巡礼之证五期与 Day207 预计联通双倍 BUFF（`estimated` 状态，不参与自动提醒）。每周轮换规则经截图验证 S3 第 21～30 周无偏移，未改动。历史已发送的 5200 万战渊堡垒提醒不在本轮处理范围。
+0.3.1 RC 的来源：已通过外部 Review 的 DEV 最终提交 `a6fd295c4b7281b3e7baec4be0cac84f155297f8`（含三个 Review 通过的 commit：S3 校准 `4911a74`、生产状态文档修正与深渊 fail-closed `ee0768d`、深渊载体一致性 `a6fd295`）经独立 merge commit 合入 main，未 squash / rebase / amend。收口时仅做版本号（manifest `0.3.0 → 0.3.1`）与 RC 文档变化，runtime 业务代码与已 Review 的 DEV 完全一致。本轮没有 config / state schema migration：config 保持 `1.5.0`，state 保持 `2`，plugin id 仍为 `zjcs.guild-notifier`。
 
-代码仅做最小必要调整：深渊延迟解锁字段（`deep_abyss_server_day` / `deep_abyss_season_day`）的数据模型、展示与审计，多奖励期渲染辅助函数，`zjcs_query` 描述补充对应语义。Review 后追加修复：延迟深渊配置损坏（载体混写、字段非法、不晚于副本开放 day）时 runtime 全面 fail closed——深渊不再混入开放日普通门槛，不可靠延迟信息整体隐藏，不猜测；合法 S3/S5 数据行为不变。plugin id、config 1.5.0、state 2、提醒提前量、去重、重试与 36 小时赛季准备提醒行为均未变；本轮不改版本号，版本号在 Review 后 RC 阶段决定。
+2026-11-04 校准轮：以运营者提供的 4 张本服『杖剑工具·赛季时间线』截图（开服第 139 天）为第一事实来源，修正战渊堡垒炼狱 4600 万（原 5200 万）、净化之庭炼狱 7500 万（原 8600 万）、君临之巢 1.25/1.45/1.8/2.5 亿（原 1.3/1.5/1.9/3.1 亿）+ 深渊 3.5 亿（副本开启 7 天后、开服第 204 天解锁）；羽2遗物池校准为「天穹圣约」、羽3遗物池校准为「苍辉古律」、奇迹幻兽校准为「奇迹幻兽-虹彩星灵」（event id 保持不变）；第 20～29 期秘宝（除第 22 期截图缺失保持 fallback，不猜）写入显式奖励，多奖励期新增 `featured_rewards` 结构；补录 S3 巡礼之证五期与 Day207 预计联通双倍 BUFF（`estimated` 状态，不参与自动提醒、日程与进度查询）。每周轮换规则经截图验证 S3 第 21～30 周无偏移，未改动。历史已发送的 5200 万战渊堡垒提醒不在本轮处理范围。
+
+延迟深渊模型：`deep_abyss_server_day` / `deep_abyss_season_day` 与副本本体日期模型同载体表达；深渊门槛不混入副本开放日普通 requirements，单独以「深渊：X（日期 · 副本开启 N 天后解锁）」展示。runtime 与 integrity audit 均 fail closed：两种载体不得混写、载体必须与副本日期模型一致、字段非法、不晚于副本开放 day 的配置一律 broken——隐藏不可靠深渊信息，不猜测；合法 S3 君临之巢与 S5 起源之门行为保持。详细语义见 [DATA_GUIDE](DATA_GUIDE.md) 与 [0.3.1 RC 验收记录](docs/RC_0.3.1_VALIDATION.md)。
 
 历史背景：0.3.0 的 DEV 主体提交 `d6344a5665fea5b8349611d5f85836ddd16ac15e` 经外部 Review 后由独立 merge commit `f241c96b61fcf1b702e543f60bf646d9e7f9a46d` 合入 main（`db97e8f` 为其文档收口提交），并已于 2026-10-02 部署到生产。该版本新增按本服确认 datetime 调度的赛季前 36 小时准备提醒，并完善既有 `zjcs_query / next_dungeon` 的副本战力口语描述；不引入关键词路由或第二套战力计算。
 
-config 从 `1.4.0` 升为 `1.5.0`，默认 `season_preparation.start_times=[]`，旧设置保留；state 保持 `2`，不迁移或清空历史 keys。升级本身不会产生赛季准备提醒；生产部署后仍须操作者填写本服已确认的 datetime 才会实际触发。不能将 08:00 作为所有赛季的固定规则。
+config 自 0.3.0 起为 `1.5.0`，默认 `season_preparation.start_times=[]`，旧设置保留；state 保持 `2`，不迁移或清空历史 keys。升级本身不会产生赛季准备提醒；生产部署后仍须操作者填写本服已确认的 datetime 才会实际触发。不能将 08:00 作为所有赛季的固定规则。
 
 准备窗口为 `[season_start - 36h, season_start)`，按真实 elapsed 36h 计算；与每日 09:00 检查共用单一串行任务。窗口前和全部工作可靠落盘后长等待，只有窗口内失败群 / 落盘失败工作需要补齐，赛季开始后停止。每群独立去重；发送后、落盘前崩溃仍可能跨重启重复，不声称 exactly-once。Tool / 命令仍以自然日事实为主，精确 datetime 当前仅服务准备提醒。
 
-DEV 本地及远程分支保留到外部 Review 完成。DEV 上的 S3 校准未创建 Release 或 tag，未连接生产 QQ，未部署；MaiBot Core 只读。0.3.0 的事实依据与受控 Runner / LLM 结果见 [0.3.0 RC 验收记录](docs/RC_0.3.0_VALIDATION.md)；受控验收不等于真实生产 QQ 全覆盖。
+DEV 分支保留。0.3.1 RC 未创建 GitHub Release 或 tag，未连接生产 QQ，未部署；MaiBot Core 只读。0.3.1 的事实依据与验证见 [0.3.1 RC 验收记录](docs/RC_0.3.1_VALIDATION.md)，0.3.0 的记录见 [0.3.0 RC 验收记录](docs/RC_0.3.0_VALIDATION.md)；受控验收不等于真实生产 QQ 全覆盖。
 
 ## 生产版本事实
 
@@ -27,9 +29,9 @@ DEV 本地及远程分支保留到外部 Review 完成。DEV 上的 S3 校准未
 - config version：`1.5.0`（部署时由 1.4.0 自动迁移）
 - notification state version：`2`（无 state migration，历史 keys 完整）
 
-当前 DEV（`4911a749` + 后续修复 commit）包含尚未部署的 S3 时间线校准与延迟深渊 fail-closed 修复；在通过外部 Review 并获得明确部署授权前不得切换生产。
+当前 main 为 **0.3.1 RC**（merge commit 之后含版本号与 RC 文档收口），包含尚未部署的 S3 时间线校准与延迟深渊模型；在通过外部 RC Review 并获得明确部署授权前不得切换生产。本轮没有 config / state migration，部署时 config 与 state 均无结构变化。
 
-更早的 0.1.x / 0.2.0 部署记录保留为历史，不作为当前状态。
+更早的 0.1.x / 0.2.0 / 0.3.0 RC 文档保留为历史记录，不作为当前状态。
 
 ## V1.2 能力摘要
 
