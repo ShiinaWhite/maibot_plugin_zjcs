@@ -1,29 +1,35 @@
 # Project Status
 
-更新时间：2026-10-02
+更新时间：2026-11-04
 
 ## 当前阶段
 
-**main 当前候选为 0.3.0 RC / config 1.5.0 / state 2，等待外部 RC Review，尚未部署生产。**
+**当前生产为 0.3.0（commit `db97e8f`，2026-10-02 部署并完成技术验收）；DEV 分支的 S3 时间线校准（`4911a749` 及其后续修复 commit）尚未 merge、尚未部署。**
 
-已通过外部 Review 的 DEV 最终提交 `d6344a5665fea5b8349611d5f85836ddd16ac15e` 经独立 merge commit `f241c96b61fcf1b702e543f60bf646d9e7f9a46d` 合入 main，完整保留主体实现与调度优化两个提交。新增按本服确认 datetime 调度的赛季前 36 小时准备提醒，并完善既有 `zjcs_query / next_dungeon` 的副本战力口语描述；不引入关键词路由或第二套战力计算。RC 收口不改变已 Review 的 runtime。
+2026-11-04 校准轮：以运营者提供的 4 张本服『杖剑工具·赛季时间线』截图（开服第 139 天）为第一事实来源，修正战渊堡垒炼狱 4600 万（原 5200 万）、净化之庭炼狱 7500 万（原 8600 万）、君临之巢 1.25/1.45/1.8/2.5 亿（原 1.3/1.5/1.9/3.1 亿）+ 深渊 3.5 亿（副本开启 7 天后、开服第 204 天解锁）；羽2/羽3遗物池与奇迹幻兽校准为正式名称（event id 保持不变）；第 20～29 期秘宝（除第 22 期截图缺失保持 fallback）写入显式奖励，多奖励期新增 `featured_rewards` 结构；补录 S3 巡礼之证五期与 Day207 预计联通双倍 BUFF（`estimated` 状态，不参与自动提醒）。每周轮换规则经截图验证 S3 第 21～30 周无偏移，未改动。历史已发送的 5200 万战渊堡垒提醒不在本轮处理范围。
 
-config 从 `1.4.0` 升为 `1.5.0`，默认 `season_preparation.start_times=[]`，旧设置保留；state 保持 `2`，不迁移或清空历史 keys。升级本身不会产生赛季准备提醒；正式部署后仍须操作者填写本服已确认的 datetime。不能将 08:00 作为所有赛季的固定规则。
+代码仅做最小必要调整：深渊延迟解锁字段（`deep_abyss_server_day` / `deep_abyss_season_day`）的数据模型、展示与审计，多奖励期渲染辅助函数，`zjcs_query` 描述补充对应语义。Review 后追加修复：延迟深渊配置损坏（载体混写、字段非法、不晚于副本开放 day）时 runtime 全面 fail closed——深渊不再混入开放日普通门槛，不可靠延迟信息整体隐藏，不猜测；合法 S3/S5 数据行为不变。plugin id、config 1.5.0、state 2、提醒提前量、去重、重试与 36 小时赛季准备提醒行为均未变；本轮不改版本号，版本号在 Review 后 RC 阶段决定。
+
+历史背景：0.3.0 的 DEV 主体提交 `d6344a5665fea5b8349611d5f85836ddd16ac15e` 经外部 Review 后由独立 merge commit `f241c96b61fcf1b702e543f60bf646d9e7f9a46d` 合入 main（`db97e8f` 为其文档收口提交），并已于 2026-10-02 部署到生产。该版本新增按本服确认 datetime 调度的赛季前 36 小时准备提醒，并完善既有 `zjcs_query / next_dungeon` 的副本战力口语描述；不引入关键词路由或第二套战力计算。
+
+config 从 `1.4.0` 升为 `1.5.0`，默认 `season_preparation.start_times=[]`，旧设置保留；state 保持 `2`，不迁移或清空历史 keys。升级本身不会产生赛季准备提醒；生产部署后仍须操作者填写本服已确认的 datetime 才会实际触发。不能将 08:00 作为所有赛季的固定规则。
 
 准备窗口为 `[season_start - 36h, season_start)`，按真实 elapsed 36h 计算；与每日 09:00 检查共用单一串行任务。窗口前和全部工作可靠落盘后长等待，只有窗口内失败群 / 落盘失败工作需要补齐，赛季开始后停止。每群独立去重；发送后、落盘前崩溃仍可能跨重启重复，不声称 exactly-once。Tool / 命令仍以自然日事实为主，精确 datetime 当前仅服务准备提醒。
 
-DEV 本地及远程分支保留到外部 Review 完成。未创建 Release 或 tag，未连接生产 QQ，未部署，MaiBot Core 只读。设计、事实依据和既有受控 Runner / LLM 结果见 [0.3.0 RC 验收记录](docs/RC_0.3.0_VALIDATION.md)；受控验收不等于真实生产 QQ 全覆盖。
+DEV 本地及远程分支保留到外部 Review 完成。DEV 上的 S3 校准未创建 Release 或 tag，未连接生产 QQ，未部署；MaiBot Core 只读。0.3.0 的事实依据与受控 Runner / LLM 结果见 [0.3.0 RC 验收记录](docs/RC_0.3.0_VALIDATION.md)；受控验收不等于真实生产 QQ 全覆盖。
 
 ## 生产版本事实
 
-以下为操作者在本轮任务提供的当前基线，本轮没有重新连接生产验证：
+当前生产基线（2026-10-02 部署，技术验收完成）：
 
-- production commit：`d2bf4d480b5911cac43faeb91edad59ddb1a62df`（main 已合入 0.3.0 RC，生产未切换）
-- plugin version：`0.2.0`，plugin id `zjcs.guild-notifier`
-- config version：`1.4.0`
-- notification state version：`2`
+- production commit：`db97e8f75275894ea4aad0ade0c57b0c513291c6`
+- plugin version：`0.3.0`，plugin id `zjcs.guild-notifier`
+- config version：`1.5.0`（部署时由 1.4.0 自动迁移）
+- notification state version：`2`（无 state migration，历史 keys 完整）
 
-旧部署与 RC 文档保留为历史记录，不能将其中的 0.1.12 生产状态视为当前状态。本轮合并与文档收口不改变生产配置、state 或 reminders。
+当前 DEV（`4911a749` + 后续修复 commit）包含尚未部署的 S3 时间线校准与延迟深渊 fail-closed 修复；在通过外部 Review 并获得明确部署授权前不得切换生产。
+
+更早的 0.1.x / 0.2.0 部署记录保留为历史，不作为当前状态。
 
 ## V1.2 能力摘要
 
@@ -104,11 +110,11 @@ DEV 本地及远程分支保留到外部 Review 完成。未创建 Release 或 t
 
 ## 数据现状
 
-- S1～S3：副本时间和战力数据较完整；
+- S1～S3：副本时间和战力数据较完整；S3 后半段（Day141～207）已按 2026-11-04 本服截图完成校准；
 - S4～S5：已整理较多结构化数据，绝对开服天数需要考虑赛季偏移；
 - S6：只整理了部分可靠信息，仍存在 `pending` 数据；
-- 秘宝大作战：前 16 期重点大奖已经结构化，第 17 期起使用确认过的规则级回退；
-- 周期活动和部分重要赛季事件已录入。
+- 秘宝大作战：前 16 期与第 20、21、23～29 期重点大奖已结构化（第 20/24/26/28 期为双奖励），第 17～19、22 期使用确认过的规则级回退；
+- 周期活动和部分重要赛季事件已录入；S3 巡礼之证五期已按截图补录为显式事件。
 
 数据维护规则见 [DATA_GUIDE.md](DATA_GUIDE.md)。
 

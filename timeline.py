@@ -340,11 +340,7 @@ def build_reminders(
             season_anchor_dates=anchors,
             remind_day=policy.dungeon,
             current_server_day=current_server_day,
-            payload={
-                "region": raw_dungeon.get("region"),
-                "requirements": _confirmed_requirements(raw_dungeon),
-                "status": status,
-            },
+            payload=_dungeon_payload(raw_dungeon, status, open_date, anchors),
         )
         if reminder is not None:
             reminders.append(reminder)
@@ -541,13 +537,28 @@ def _dungeon_schedule_entry(
         category="dungeon",
         name=name,
         event_date=event_date,
-        payload={
-            "region": raw_dungeon.get("region"),
-            "requirements": _confirmed_requirements(raw_dungeon),
-            "status": status,
-        },
+        payload=_dungeon_payload(raw_dungeon, status, open_date, anchors),
         current_server_day=current_server_day,
     )
+
+
+def _dungeon_payload(
+    raw_dungeon: Mapping[str, Any],
+    status: object,
+    open_date: date | None,
+    anchors: Mapping[str, date],
+) -> dict[str, Any]:
+    """副本条目的统一 payload：常规门槛 + 延迟解锁深渊（如存在）。"""
+
+    payload: dict[str, Any] = {
+        "region": raw_dungeon.get("region"),
+        "requirements": _confirmed_requirements(raw_dungeon),
+        "status": status,
+    }
+    deep_abyss = _deep_abyss_payload(raw_dungeon, open_date=open_date, anchors=anchors)
+    if deep_abyss is not None:
+        payload["deep_abyss"] = deep_abyss
+    return payload
 
 
 def format_reminder(reminder: Reminder) -> str:
@@ -567,6 +578,7 @@ def format_reminder(reminder: Reminder) -> str:
                 f"{label}：{format_power(power)}"
                 for label, power in requirements.items()
             )
+        lines.extend(_deep_abyss_lines(reminder.payload))
     elif reminder.category == "activity":
         lines = [
             "【杖剑传说 · 活动提醒】",
@@ -575,15 +587,9 @@ def format_reminder(reminder: Reminder) -> str:
             "",
             reminder.name,
         ]
-        reward = reminder.payload.get("featured_reward")
-        if isinstance(reward, Mapping):
-            reward_name = reward.get("name")
-            if isinstance(reward_name, str) and reward_name:
-                amount = reward.get("amount")
-                reward_text = reward_name
-                if amount is not None:
-                    reward_text = f"{reward_text} ×{amount}"
-                lines.extend(["", "重点奖励：", reward_text])
+        reward_texts = _featured_reward_texts(reminder.payload)
+        if reward_texts:
+            lines.extend(["", "重点奖励：", *reward_texts])
         else:
             reward_category = reminder.payload.get("featured_reward_category")
             if isinstance(reward_category, str) and reward_category:
@@ -723,6 +729,7 @@ def format_next_dungeon(
         )
     else:
         lines.extend(["", "准入战力：暂未获得可靠的正式服数据。"])
+    lines.extend(_deep_abyss_lines(entry.payload))
 
     prepare_date = dungeon_prepare_date(entry.event_date)
     prepare_offset = (prepare_date - today).days
@@ -1359,16 +1366,9 @@ def format_secret_treasure_overview(overview: SecretTreasureOverview) -> str:
 
 def _secret_treasure_reward_lines(phase: SecretTreasurePhase) -> list[str]:
     if phase.reward_mode == REWARD_MODE_EXPLICIT:
-        reward = phase.payload.get("featured_reward")
-        if isinstance(reward, Mapping):
-            reward_name = reward.get("name")
-            if isinstance(reward_name, str) and reward_name:
-                amount = reward.get("amount")
-                reward_text = reward_name
-                if amount is not None:
-                    reward_text = f"{reward_text} ×{amount}"
-                return [f"重点奖励：{reward_text}"]
-        return ["重点奖励：暂未获得可靠确认。"]
+        return [
+            f"重点奖励：{text}" for text in _featured_reward_texts(phase.payload)
+        ] or ["重点奖励：暂未获得可靠确认。"]
     if phase.reward_mode == REWARD_MODE_RULE_FALLBACK:
         category = phase.payload.get("featured_reward_category")
         if isinstance(category, str) and category:
@@ -1422,18 +1422,13 @@ def _schedule_entry_lines(entry: ScheduleEntry) -> list[str]:
                 f"{label}：{format_power(power)}"
                 for label, power in requirements.items()
             )
+        lines.extend(_deep_abyss_lines(entry.payload))
         return lines
 
     lines = [f"【{category_label}】{entry.name}"]
-    reward = entry.payload.get("featured_reward")
-    if isinstance(reward, Mapping):
-        reward_name = reward.get("name")
-        if isinstance(reward_name, str) and reward_name:
-            amount = reward.get("amount")
-            reward_text = reward_name
-            if amount is not None:
-                reward_text = f"{reward_text} ×{amount}"
-            lines.append(f"重点奖励：{reward_text}")
+    reward_texts = _featured_reward_texts(entry.payload)
+    if reward_texts:
+        lines.extend(f"重点奖励：{text}" for text in reward_texts)
     else:
         reward_category = entry.payload.get("featured_reward_category")
         if isinstance(reward_category, str) and reward_category:
@@ -1507,17 +1502,17 @@ def _secret_treasure_name_and_payload(
 
     if phase is not None:
         phase_status = phase.get("status")
-        reward = phase.get("featured_reward")
-        if phase_status not in NOTIFIABLE_STATUSES or not isinstance(reward, Mapping):
-            return None
-        if reward.get("status") not in NOTIFIABLE_STATUSES:
-            return None
-        if not isinstance(reward.get("name"), str) or not reward["name"]:
+        rewards = _explicit_reward_items(phase)
+        if phase_status not in NOTIFIABLE_STATUSES or rewards is None:
             return None
         phase_name = phase.get("name")
         if isinstance(phase_name, str) and phase_name:
             name = phase_name
-        payload["featured_reward"] = dict(reward)
+        # payload 始终携带 featured_reward（首个重点奖励）以兼容既有
+        # formatter / query；显式多奖励期额外提供完整 featured_rewards。
+        payload["featured_reward"] = dict(rewards[0])
+        if len(rewards) > 1:
+            payload["featured_rewards"] = [dict(reward) for reward in rewards]
     elif phase_number > 16 and fallback_categories:
         payload["featured_reward_category"] = fallback_categories[
             (phase_number - 1) % len(fallback_categories)
@@ -1525,6 +1520,41 @@ def _secret_treasure_name_and_payload(
     else:
         return None
     return name, payload
+
+
+def _explicit_reward_items(
+    phase: Mapping[str, Any],
+) -> list[Mapping[str, Any]] | None:
+    """显式奖励条目列表；缺失、混写或任一条目不可靠一律 None fail closed。"""
+
+    has_single = "featured_reward" in phase
+    has_multi = "featured_rewards" in phase
+    if has_single and has_multi:
+        # 两种奖励载体混写即歧义。
+        return None
+    if has_multi:
+        raw_rewards = phase.get("featured_rewards")
+        if not isinstance(raw_rewards, list) or not raw_rewards:
+            return None
+        rewards: list[Mapping[str, Any]] = []
+        for reward in raw_rewards:
+            if not _valid_reward(reward):
+                return None
+            rewards.append(reward)
+        return rewards
+    if has_single:
+        reward = phase.get("featured_reward")
+        return [reward] if _valid_reward(reward) else None
+    return None
+
+
+def _valid_reward(reward: object) -> bool:
+    return (
+        isinstance(reward, Mapping)
+        and reward.get("status") in NOTIFIABLE_STATUSES
+        and isinstance(reward.get("name"), str)
+        and bool(reward["name"])
+    )
 
 
 def _build_secret_treasure_reminders(
@@ -1770,16 +1800,136 @@ def _build_reminder(
     )
 
 
+DEEP_ABYSS_ABSENT = "absent"
+DEEP_ABYSS_VALID = "valid"
+DEEP_ABYSS_BROKEN = "broken"
+
+
+def _deep_abyss_status(item: Mapping[str, Any]) -> str:
+    """判定延迟深渊配置：absent / valid / broken。
+
+    只要数据声称存在延迟深渊（任一载体字段出现），就绝不返回
+    absent：载体混写、载体与副本本体日期模型不一致、字段非法或
+    不晚于副本开放 day 均为 broken，调用方必须 fail closed——隐藏
+    不可靠的延迟信息，也不得把深渊退化成“与普通难度同日开放”
+    的普通门槛。跨日期模型不做换算、不猜测。
+    """
+
+    has_server = "deep_abyss_server_day" in item
+    has_season = "deep_abyss_season_day" in item
+    if not has_server and not has_season:
+        return DEEP_ABYSS_ABSENT
+    if has_server and has_season:
+        # 两种载体混写即歧义。
+        return DEEP_ABYSS_BROKEN
+    expected_model = "server_day" if has_server else "season_day"
+    # 载体必须与副本本体日期模型一致，否则延迟 day 属于不同的
+    # 时间坐标系，无法安全表达解锁语义。
+    if _timeline_date_model(item) != expected_model:
+        return DEEP_ABYSS_BROKEN
+    deep_day = _positive_int(item.get(f"deep_abyss_{expected_model}"))
+    if deep_day is None:
+        return DEEP_ABYSS_BROKEN
+    base = _positive_int(item.get(expected_model))
+    if base is not None and deep_day <= base:
+        # 延迟解锁必须晚于副本自身开放 day，否则语义不成立。
+        return DEEP_ABYSS_BROKEN
+    return DEEP_ABYSS_VALID
+
+
 def _confirmed_requirements(item: Mapping[str, Any]) -> dict[str, object]:
     if item.get("status") == "pending_formal_power":
         return {}
 
+    # 数据声称存在延迟深渊时（无论配置本身是否可靠），深渊门槛都不属于
+    # 副本开放日即可进入的内容，必须从常规 requirements 中剥离；
+    # 延迟字段本身损坏时同样剥离并隐藏延迟信息，fail closed 不猜测。
+    delayed = _deep_abyss_status(item) != DEEP_ABYSS_ABSENT
     requirements = item.get("requirements")
     if not isinstance(requirements, Mapping):
         return {}
     return {
-        str(label): value for label, value in requirements.items() if value is not None
+        str(label): value
+        for label, value in requirements.items()
+        if value is not None and not (delayed and label == "深渊")
     }
+
+
+def _deep_abyss_payload(
+    item: Mapping[str, Any],
+    *,
+    open_date: date | None,
+    anchors: Mapping[str, date],
+) -> dict[str, Any] | None:
+    """构建延迟解锁深渊的 payload；仅可靠（valid）配置才生成。"""
+
+    if _deep_abyss_status(item) != DEEP_ABYSS_VALID:
+        return None
+    server_day = _positive_int(item.get("deep_abyss_server_day"))
+    season_day = _positive_int(item.get("deep_abyss_season_day"))
+
+    raw_requirements = item.get("requirements")
+    requirements: dict[str, object] = {}
+    if (
+        isinstance(raw_requirements, Mapping)
+        and raw_requirements.get("深渊") is not None
+    ):
+        requirements = {"深渊": raw_requirements["深渊"]}
+
+    payload: dict[str, Any] = {
+        "requirements": requirements,
+        "unlock_server_day": server_day,
+        "unlock_season_day": season_day,
+        "unlock_date": None,
+        "days_after_open": None,
+    }
+    if server_day is not None:
+        if open_date is not None:
+            payload["unlock_date"] = (
+                open_date + timedelta(days=server_day - 1)
+            ).isoformat()
+        base = _positive_int(item.get("server_day"))
+    else:
+        season = item.get("season")
+        anchor = anchors.get(season) if isinstance(season, str) else None
+        if anchor is not None:
+            payload["unlock_date"] = (
+                anchor + timedelta(days=season_day - 1)
+            ).isoformat()
+        base = _positive_int(item.get("season_day"))
+    if base is not None:
+        delayed_day = server_day if server_day is not None else season_day
+        payload["days_after_open"] = delayed_day - base
+    return payload
+
+
+def _deep_abyss_lines(payload: Mapping[str, Any]) -> list[str]:
+    """统一的延迟深渊展示行；无延迟数据时返回空列表。"""
+
+    info = payload.get("deep_abyss")
+    if not isinstance(info, Mapping):
+        return []
+    requirements = info.get("requirements")
+    power = None
+    if isinstance(requirements, Mapping):
+        power = requirements.get("深渊")
+    label = "深渊" if power is None else f"深渊：{format_power(power)}"
+
+    unlock_date = info.get("unlock_date")
+    if isinstance(unlock_date, str) and unlock_date:
+        when = unlock_date
+    elif isinstance(info.get("unlock_season_day"), int):
+        when = f"赛季第 {info['unlock_season_day']} 天"
+    else:
+        when = "日期待确认"
+
+    days_after = info.get("days_after_open")
+    gap_text = (
+        f"副本开启 {days_after} 天后解锁"
+        if isinstance(days_after, int)
+        else "副本开启后延迟解锁"
+    )
+    return [f"{label}（{when} · {gap_text}）"]
 
 
 def validate_remind_day(value: object, field_name: str = "remind_day") -> int:
@@ -1845,18 +1995,13 @@ def _format_daily_reminder_item(reminder: Reminder, today: date) -> str:
                 f"{label}：{format_power(power)}"
                 for label, power in requirements.items()
             )
+        lines.extend(_deep_abyss_lines(reminder.payload))
         lines.extend(["", _dungeon_preparation_hint(reminder.event_date, today)])
     else:
         lines.append(f"【{category_label}】{reminder.name}")
-        reward = reminder.payload.get("featured_reward")
-        if isinstance(reward, Mapping):
-            reward_name = reward.get("name")
-            if isinstance(reward_name, str) and reward_name:
-                amount = reward.get("amount")
-                reward_text = reward_name
-                if amount is not None:
-                    reward_text = f"{reward_text} ×{amount}"
-                lines.append(f"重点奖励：{reward_text}")
+        reward_texts = _featured_reward_texts(reminder.payload)
+        if reward_texts:
+            lines.extend(f"重点奖励：{text}" for text in reward_texts)
         else:
             reward_category = reminder.payload.get("featured_reward_category")
             if isinstance(reward_category, str) and reward_category:
@@ -1877,6 +2022,46 @@ def _positive_int(value: object) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         return None
     return value
+
+
+def _reward_display_text(reward: Mapping[str, Any]) -> str:
+    """单个奖励的展示文本：名称 + 可选数量。"""
+
+    name = reward.get("name")
+    amount = reward.get("amount")
+    text = str(name)
+    if amount is not None:
+        text = f"{text} ×{amount}"
+    return text
+
+
+def _featured_reward_texts(payload: Mapping[str, Any]) -> list[str]:
+    """重点奖励文本的统一渲染；显式多奖励在一项内并列，与截图口径一致。
+
+    featured_rewards（多奖励显式期）优先；缺失或不可靠时回退到
+    featured_reward（单奖励）。两者都不可靠时返回空列表，由调用方
+    保持各自的 fail-closed 文案。
+    """
+
+    rewards = payload.get("featured_rewards")
+    if isinstance(rewards, list):
+        texts = [
+            _reward_display_text(reward)
+            for reward in rewards
+            if isinstance(reward, Mapping)
+            and isinstance(reward.get("name"), str)
+            and bool(reward["name"])
+        ]
+        return [" ｜ ".join(texts)] if texts else []
+
+    reward = payload.get("featured_reward")
+    if (
+        isinstance(reward, Mapping)
+        and isinstance(reward.get("name"), str)
+        and bool(reward["name"])
+    ):
+        return [_reward_display_text(reward)]
+    return []
 
 
 def _is_later_season(season: str) -> bool:
@@ -1978,7 +2163,34 @@ def _audit_timeline_item(
     if _timeline_date_model(item) is None:
         issues.append(f"{label}: 日期模型缺失、非法或歧义")
 
+    _audit_deep_abyss_fields(label, item, issues)
     _audit_source_references(label, item, registered_source_keys, issues)
+
+
+def _audit_deep_abyss_fields(
+    label: str,
+    item: Mapping[str, Any],
+    issues: list[str],
+) -> None:
+    """延迟解锁深渊字段：载体唯一、合法、与副本日期模型一致且晚于开放 day。"""
+
+    present_keys = [
+        key for key in ("deep_abyss_server_day", "deep_abyss_season_day") if key in item
+    ]
+    if len(present_keys) > 1:
+        issues.append(f"{label}: 深渊延迟解锁载体不得混写")
+    date_model = _timeline_date_model(item)
+    for key in present_keys:
+        value = _positive_int(item.get(key))
+        if value is None:
+            issues.append(f"{label}: {key} 如果存在必须是正整数")
+            continue
+        expected_model = "server_day" if key.endswith("server_day") else "season_day"
+        if date_model != expected_model:
+            issues.append(f"{label}: {key} 要求副本使用 {expected_model} 日期模型")
+        base = _positive_int(item.get(expected_model))
+        if base is not None and value <= base:
+            issues.append(f"{label}: {key} 必须晚于副本开放 {expected_model}")
 
 
 def _audit_source_references(
@@ -2058,6 +2270,21 @@ def _audit_secret_treasure_rule(
 
         # reward integrity 独立于 server_day 是否存在。
         phase_status = phase.get("status")
+        if "featured_reward" in phase and "featured_rewards" in phase:
+            issues.append(
+                f"{phase_label}: featured_reward 与 featured_rewards 不得混写"
+            )
+        if "featured_rewards" in phase:
+            raw_rewards = phase.get("featured_rewards")
+            if not isinstance(raw_rewards, list) or not raw_rewards:
+                issues.append(f"{phase_label}: featured_rewards 必须是非空数组")
+            else:
+                for reward_index, reward in enumerate(raw_rewards):
+                    if not _valid_reward(reward):
+                        issues.append(
+                            f"{phase_label}: featured_rewards[{reward_index}] "
+                            "必须包含非空 name 与可通知 status"
+                        )
         reward = phase.get("featured_reward")
         if (
             isinstance(phase_status, str)
